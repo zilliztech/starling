@@ -512,8 +512,10 @@ namespace diskann {
 
     size_t expected_file_size =
         2 * sizeof(_u32) + gt_num * sizeof(_u32) + total_res * sizeof(_u32);
-
-    if (actual_file_size != expected_file_size) {
+    size_t expected_file_size_include_dists =
+        expected_file_size + total_res * sizeof(float);
+    if (!(actual_file_size == expected_file_size ||
+          actual_file_size == expected_file_size_include_dists)) {
       std::stringstream stream;
       stream << "Error. File size mismatch in range truthset. actual size: "
              << actual_file_size << ", expected: " << expected_file_size;
