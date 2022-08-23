@@ -139,7 +139,7 @@ namespace diskann {
         this->reader->register_thread();
         IOContext &     ctx = this->reader->get_ctx();
         QueryScratch<T> scratch;
-        _u64 coord_alloc_size = ROUND_UP(MAX_N_CMPS * this->aligned_dim, 256);
+        _u64 coord_alloc_size = ROUND_UP(sizeof(T) * MAX_N_CMPS * this->aligned_dim, 256);
         diskann::alloc_aligned((void **) &scratch.coord_scratch,
                                coord_alloc_size, 256);
         diskann::alloc_aligned((void **) &scratch.sector_scratch,
@@ -159,7 +159,7 @@ namespace diskann {
                                8 * sizeof(float));
         scratch.visited = new tsl::robin_set<_u64>(4096);
 
-        memset(scratch.coord_scratch, 0, MAX_N_CMPS * this->aligned_dim);
+        memset(scratch.coord_scratch, 0, coord_alloc_size);
         memset(scratch.aligned_query_T, 0, this->aligned_dim * sizeof(T));
         memset(scratch.aligned_query_float, 0,
                this->aligned_dim * sizeof(float));
