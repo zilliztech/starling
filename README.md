@@ -1,4 +1,32 @@
-# DiskANN
+# DiskANN-Research
+This repo contains the following features:
+
+1. Uniformly sampled in-memory navigation graph. 
+
+To run benchmarks, go to `scripts` directory and run
+
+```bash
+./run_benchmark.sh [debug/release] [build/build_mem/search] [knn/range]
+```
+
+Configure datasets and parameters in `scripts/config.sh` and the beginning of `scripts/run_benchmark.sh`.
+
+## Uniformly Sampled In-memory Navigation Graph
+For building, modify `MEM_R`, `MEM_BUILD_L`, `MEM_ALPHA`, `SAMPLING_RATE` and run 
+
+```bash
+./run_benchmark.sh [debug/release] build_mem
+```
+
+For searching, modify `mem_L` and `mem_topk` to enable
+```bash
+./run_benchmark.sh [debug/release] search [knn/range]
+```
+Set `mem_L` to `0` to disable. Default is disable.
+
+---
+
+## DiskANN
 
 The goal of the project is to build scalable, performant, streaming and cost-effective approximate nearest neighbor search algorithms for trillion-scale vector search.
 This release has the code from the [DiskANN paper](https://papers.nips.cc/paper/9527-rand-nsg-fast-accurate-billion-point-nearest-neighbor-search-on-a-single-node.pdf) published in NeurIPS 2019, 

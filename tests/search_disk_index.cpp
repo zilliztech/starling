@@ -58,6 +58,7 @@ int search_disk_index(
     std::string& gt_file, const unsigned num_threads, const unsigned recall_at,
     const unsigned beamwidth, const unsigned num_nodes_to_cache,
     const _u32 search_io_limit, const std::vector<unsigned>& Lvec,
+    const _u32 mem_topk, const _u32 mem_L,
     const bool use_reorder_data = false) {
   diskann::cout << "Search parameters: #threads: " << num_threads << ", ";
   if (beamwidth <= 0)
@@ -110,6 +111,12 @@ int search_disk_index(
   if (res != 0) {
     return res;
   }
+
+  // load in-memory navigation graph
+  if (mem_L) {
+    _pFlashIndex->load_mem_index(metric, query_aligned_dim, index_path_prefix, num_threads, mem_L, mem_topk);
+  }
+
   // cache bfs levels
   std::vector<uint32_t> node_list;
   diskann::cout << "Caching " << num_nodes_to_cache
@@ -288,6 +295,7 @@ int main(int argc, char** argv) {
   std::string data_type, dist_fn, index_path_prefix, result_path_prefix,
       query_file, gt_file;
   unsigned              num_threads, K, W, num_nodes_to_cache, search_io_limit;
+  unsigned              mem_topk, mem_L;
   std::vector<unsigned> Lvec;
   bool                  use_reorder_data = false;
 
@@ -336,6 +344,10 @@ int main(int argc, char** argv) {
                        po::bool_switch()->default_value(false),
                        "Include full precision data in the index. Use only in "
                        "conjuction with compressed data on SSD.");
+    desc.add_options()("mem_L", po::value<unsigned>(&mem_L)->default_value(0),
+                       "The L of the in-memory navigation graph while searching. Use 0 to disable");
+    desc.add_options()("mem_topk", po::value<unsigned>(&mem_topk)->default_value(0),
+                       "The TopK of the in-memory navigation graph.");
 
     po::variables_map vm;
     po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -365,6 +377,10 @@ int main(int argc, char** argv) {
     return -1;
   }
 
+  if (!validate_mem_index_params(mem_topk, mem_L)) {
+    return -1;
+  }
+
   if ((data_type != std::string("float")) &&
       (metric == diskann::Metric::INNER_PRODUCT)) {
     std::cout << "Currently support only floating point data for Inner Product."
@@ -384,16 +400,16 @@ int main(int argc, char** argv) {
       return search_disk_index<float>(metric, index_path_prefix,
                                       result_path_prefix, query_file, gt_file,
                                       num_threads, K, W, num_nodes_to_cache,
-                                      search_io_limit, Lvec, use_reorder_data);
+                                      search_io_limit, Lvec, mem_topk, mem_L, use_reorder_data);
     else if (data_type == std::string("int8"))
       return search_disk_index<int8_t>(metric, index_path_prefix,
                                        result_path_prefix, query_file, gt_file,
                                        num_threads, K, W, num_nodes_to_cache,
-                                       search_io_limit, Lvec, use_reorder_data);
+                                       search_io_limit, Lvec, mem_topk, mem_L, use_reorder_data);
     else if (data_type == std::string("uint8"))
       return search_disk_index<uint8_t>(
           metric, index_path_prefix, result_path_prefix, query_file, gt_file,
-          num_threads, K, W, num_nodes_to_cache, search_io_limit, Lvec,
+          num_threads, K, W, num_nodes_to_cache, search_io_limit, Lvec, mem_topk, mem_L,
           use_reorder_data);
     else {
       std::cerr << "Unsupported data type. Use float or int8 or uint8"

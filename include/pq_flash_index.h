@@ -17,6 +17,7 @@
 #include "pq_table.h"
 #include "utils.h"
 #include "windows_customizations.h"
+#include "index.h"
 
 #define MAX_GRAPH_DEGREE 512
 #define MAX_N_CMPS 16384
@@ -75,6 +76,10 @@ namespace diskann {
     // load compressed data, and obtains the handle to the disk-resident index
     DISKANN_DLLEXPORT int  load(uint32_t num_threads, const char *index_prefix);
 #endif
+
+    DISKANN_DLLEXPORT void load_mem_index(Metric metric, const size_t query_dim,
+        const std::string &index_prefix, const _u32 num_threads,
+        const _u32 mem_L, const _u32 mem_topk);
 
     DISKANN_DLLEXPORT void load_cache_list(std::vector<uint32_t> &node_list);
 
@@ -194,6 +199,12 @@ namespace diskann {
     bool                           count_visited_nodes = false;
     bool                           reorder_data_exists = false;
     _u64                           reoreder_data_offset = 0;
+
+    // in-memory navigation graph
+    _u32 mem_L_ = 0;
+    _u32 mem_topk_ = 0;
+    std::unique_ptr<Index<T, uint32_t>> mem_index_;
+    std::vector<unsigned> memid2diskid_;
 
 #ifdef EXEC_ENV_OLS
     // Set to a larger value than the actual header to accommodate

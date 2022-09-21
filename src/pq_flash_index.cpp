@@ -537,6 +537,28 @@ namespace diskann {
     this->thread_data.push_notify_all();
   }
 
+  template<typename T>
+  void PQFlashIndex<T>::load_mem_index(Metric metric, const size_t query_dim, 
+      const std::string& index_prefix, const _u32 num_threads,
+      const _u32 mem_L, const _u32 mem_topk) {
+      const auto index_file = index_prefix + "MEM/_index";
+      const auto index_idmap = index_prefix + "MEM/_index.data";
+      std::cout << "Reading in-memory index file from " << index_file << " and "
+        << index_idmap << std::endl;
+
+      mem_index_ = std::make_unique<diskann::Index<T, uint32_t>>(metric, query_dim, 0, false);
+      mem_index_->load(index_file.c_str(), num_threads, mem_L);
+
+      std::ifstream reader(index_idmap);
+      unsigned size;
+      reader.read((char*)&size, sizeof(unsigned));
+      memid2diskid_.resize(size);
+      reader.read((char*)memid2diskid_.data(), sizeof(unsigned)*size);
+      reader.close();
+      this->mem_L_ = mem_L;
+      this->mem_topk_ = mem_topk;
+  }
+
 #ifdef EXEC_ENV_OLS
   template<typename T>
   int PQFlashIndex<T>::load(MemoryMappedFiles &files, uint32_t num_threads,
@@ -918,13 +940,24 @@ namespace diskann {
       }
     }
 
-    compute_dists(&best_medoid, 1, dist_scratch);
-    retset[0].id = best_medoid;
-    retset[0].distance = dist_scratch[0];
-    retset[0].flag = true;
-    visited.insert(best_medoid);
+    unsigned cur_list_size = 0;
+    auto compute_and_add_to_retset = [&](const unsigned *node_ids, const _u64 n_ids) {
+      compute_dists(node_ids, n_ids, dist_scratch);
+      for (_u64 i = 0; i < n_ids; ++i) {
+        retset[cur_list_size].id = node_ids[i];
+        retset[cur_list_size].distance = dist_scratch[i];
+        retset[cur_list_size++].flag = true;
+        visited.insert(node_ids[i]);
+      }
+    };
 
-    unsigned cur_list_size = 1;
+    if (mem_L_) {
+      std::vector<unsigned> mem_results(mem_topk_);
+      mem_index_->search(query, mem_topk_, mem_L_, mem_results.data()); // returns <hops, cmps>
+      compute_and_add_to_retset(mem_results.data(), mem_topk_);
+    } else {
+      compute_and_add_to_retset(&best_medoid, 1);
+    }
 
     std::sort(retset.begin(), retset.begin() + cur_list_size);
 

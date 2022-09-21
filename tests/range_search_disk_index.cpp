@@ -15,6 +15,7 @@
 #include "pq_flash_index.h"
 #include "partition_and_pq.h"
 #include "timer.h"
+#include "utils.h"
 
 #ifndef _WINDOWS
 #include <sys/mman.h>
@@ -54,7 +55,8 @@ int search_disk_index(diskann::Metric&   metric,
                       const unsigned num_threads, const float search_range,
                       const unsigned               beamwidth,
                       const unsigned               num_nodes_to_cache,
-                      const std::vector<unsigned>& Lvec) {
+                      const std::vector<unsigned>& Lvec,
+                      const _u32 mem_topk, const _u32 mem_L) {
   std::string pq_prefix = index_path_prefix + "_pq";
   std::string disk_index_file = index_path_prefix + "_disk.index";
   std::string warmup_query_file = index_path_prefix + "_sample_data.bin";
@@ -107,6 +109,12 @@ int search_disk_index(diskann::Metric&   metric,
   if (res != 0) {
     return res;
   }
+
+  // load in-memory navigation graph
+  if (mem_L) {
+    _pFlashIndex->load_mem_index(metric, query_aligned_dim, index_path_prefix, num_threads, mem_L, mem_topk);
+  }
+
   // cache bfs levels
   std::vector<uint32_t> node_list;
   diskann::cout << "Caching " << num_nodes_to_cache
@@ -268,6 +276,7 @@ int main(int argc, char** argv) {
   std::string data_type, dist_fn, index_path_prefix, result_path_prefix,
       query_file, gt_file;
   unsigned              num_threads, W, num_nodes_to_cache;
+  unsigned              mem_topk, mem_L;
   std::vector<unsigned> Lvec;
   float                 range;
 
@@ -306,6 +315,10 @@ int main(int argc, char** argv) {
         po::value<uint32_t>(&num_threads)->default_value(omp_get_num_procs()),
         "Number of threads used for building index (defaults to "
         "omp_get_num_procs())");
+    desc.add_options()("mem_L", po::value<unsigned>(&mem_L)->default_value(0),
+                       "The L of the in-memory navigation graph while searching. Use 0 to disable");
+    desc.add_options()("mem_topk", po::value<unsigned>(&mem_topk)->default_value(0),
+                       "The TopK of the in-memory navigation graph.");
 
     po::variables_map vm;
     po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -333,6 +346,10 @@ int main(int argc, char** argv) {
     return -1;
   }
 
+  if (!validate_mem_index_params(mem_topk, mem_L)) {
+    return -1;
+  }
+
   if ((data_type != std::string("float")) &&
       (metric == diskann::Metric::INNER_PRODUCT)) {
     std::cout << "Currently support only floating point data for Inner Product."
@@ -344,15 +361,15 @@ int main(int argc, char** argv) {
     if (data_type == std::string("float"))
       return search_disk_index<float>(metric, index_path_prefix, query_file,
                                       gt_file, num_threads, range, W,
-                                      num_nodes_to_cache, Lvec);
+                                      num_nodes_to_cache, Lvec, mem_topk, mem_L);
     else if (data_type == std::string("int8"))
       return search_disk_index<int8_t>(metric, index_path_prefix, query_file,
                                        gt_file, num_threads, range, W,
-                                       num_nodes_to_cache, Lvec);
+                                       num_nodes_to_cache, Lvec, mem_topk, mem_L);
     else if (data_type == std::string("uint8"))
       return search_disk_index<uint8_t>(metric, index_path_prefix, query_file,
                                         gt_file, num_threads, range, W,
-                                        num_nodes_to_cache, Lvec);
+                                        num_nodes_to_cache, Lvec, mem_topk, mem_L);
     else {
       std::cerr << "Unsupported data type. Use float or int8 or uint8"
                 << std::endl;

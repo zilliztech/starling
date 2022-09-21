@@ -931,6 +931,14 @@ inline bool validate_index_file_size(std::ifstream& in) {
   return true;
 }
 
+inline bool validate_mem_index_params(const _u32 mem_topk, const _u32 mem_L) {
+  if (mem_L && (mem_L < mem_topk)) {
+    diskann::cerr << "mem_L should be equal or larger than mem_topk" << std::endl;
+    return false;
+  }
+  return true;
+}
+
 // This function is valid only for float data type.
 template<typename T>
 inline void normalize(T* arr, size_t dim) {
