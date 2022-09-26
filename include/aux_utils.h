@@ -45,6 +45,9 @@ namespace diskann {
   template<typename T>
   class PQFlashIndex;
 
+  DISKANN_DLLEXPORT std::pair<bool, std::vector<_u64>> 
+        get_disk_index_meta(const std::string& path);
+
   DISKANN_DLLEXPORT double get_memory_budget(const std::string &mem_budget_str);
   DISKANN_DLLEXPORT double get_memory_budget(double search_ram_budget_in_gb);
   DISKANN_DLLEXPORT void   add_new_file_to_single_index(std::string index_file,

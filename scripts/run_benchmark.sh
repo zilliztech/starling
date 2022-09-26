@@ -17,6 +17,11 @@ MEM_BUILD_L=128
 MEM_ALPHA=1.2
 SAMPLING_RATE=0.01
 
+# Graph Partition
+GP_TIMES=16
+GP_T=16
+GP_DESCEND_TIMES=0
+
 # Search
 BM_LIST=(4)
 T_LIST=(16)
@@ -34,28 +39,28 @@ RS_LS="80 100"
 case $1 in
   debug)
     cmake -DCMAKE_BUILD_TYPE=Debug .. -B ../debug
-    pushd ../debug
+    cd ../debug
   ;;
   release)
     cmake -DCMAKE_BUILD_TYPE=Release .. -B ../release
-    pushd ../release
+    cd ../release
   ;;
   *)
-    echo "Usage: ./run_benchmark.sh [debug/release] [build/build_mem/search] [knn/range]"
+    echo "Usage: ./run_benchmark.sh [debug/release] [build/build_mem/gp/search] [knn/range]"
     exit
   ;;
 esac
 make -j
 
 INDEX_PREFIX_PATH="${PREFIX}_M${M}_R${R}_L${BUILD_L}_B${B}/"
-MEM_SAMPLE_PATH="${INDEX_PREFIX_PATH}SAMPLE/"
-MEM_INDEX_PATH="${INDEX_PREFIX_PATH}MEM/"
+MEM_SAMPLE_PATH="${INDEX_PREFIX_PATH}SAMPLE_RATE_${SAMPLING_RATE}/"
+MEM_INDEX_PATH="${INDEX_PREFIX_PATH}MEM_R_${MEM_R}_L_${MEM_BUILD_L}_ALPHA_${MEM_ALPHA}/"
+GP_PATH="${INDEX_PREFIX_PATH}GP_TIMES_${GP_TIMES}_DESCEND_${GP_DESCEND_TIMES}/"
 
 check_dir_and_make_if_absent() {
   local dir=$1
-  if [ -d $dir ]
-  then
-    echo "Directory $dir is already exit. Remove or rename it to rebuild."
+  if [ -d $dir ]; then
+    echo "Directory $dir is already exit. Remove or rename it and then re-run."
     exit 1
   else
     mkdir -p ${dir}
@@ -84,7 +89,7 @@ case $2 in
     mkdir -p ${MEM_SAMPLE_PATH}
     # TODO: Add frequency sampling method
     echo "Generating random slice..."
-    time ./utils/gen_random_slice $DATA_TYPE $BASE_PATH $MEM_SAMPLE_PATH $SAMPLING_RATE > ${MEM_SAMPLE_PATH}slice.log
+    time ./utils/gen_random_slice $DATA_TYPE $BASE_PATH $MEM_SAMPLE_PATH $SAMPLING_RATE > ${MEM_SAMPLE_PATH}sample.log
     echo "Building memory index..."
     time ./build_memory_index \
       --data_type ${DATA_TYPE} \
@@ -95,9 +100,24 @@ case $2 in
       -L ${MEM_BUILD_L} \
       --alpha ${MEM_ALPHA} > ${MEM_INDEX_PATH}build.log
   ;;
+  gp)
+    check_dir_and_make_if_absent ${GP_PATH}
+    OLD_INDEX_FILE=${INDEX_PREFIX_PATH}_disk_old.index
+    if [ ! -f "$OLD_INDEX_FILE" ]; then
+      OLD_INDEX_FILE=${INDEX_PREFIX_PATH}_disk.index
+    fi
+    GP_FILE_PATH=${GP_PATH}_part.bin
+    time ../graph_partition/SSD_Based_Plan $DATA_DIM $DATA_N ${OLD_INDEX_FILE} \
+      $DATA_TYPE $GP_FILE_PATH $GP_T $GP_TIMES $GP_DESCEND_TIMES 0 > ${GP_FILE_PATH}.log
+    
+    time ./utils/index_relayout ${OLD_INDEX_FILE} ${GP_FILE_PATH} > ${GP_PATH}relayout.log
+    if [ ! -f "${INDEX_PREFIX_PATH}_disk_old.index" ]; then
+      mv $OLD_INDEX_FILE ${INDEX_PREFIX_PATH}_disk_old.index
+    fi
+    cp ${GP_PATH}_part_tmp.index ${INDEX_PREFIX_PATH}_disk.index
+  ;;
   search)
-    if ! [ -d "$INDEX_PREFIX_PATH" ]
-    then
+    if [ ! -d "$INDEX_PREFIX_PATH" ]; then
       echo "Directory $INDEX_PREFIX_PATH is not exist. Build it first?"
       exit 1
     fi
@@ -164,13 +184,11 @@ case $2 in
         done
       ;;
       *)
-        echo "Usage: ./run_benchmark.sh [debug/release] [build/build_mem/search] [knn/range]"
+        echo "Usage: ./run_benchmark.sh [debug/release] [build/build_mem/gp/search] [knn/range]"
       ;;
     esac
   ;;
   *)
-    echo "Usage: ./run_benchmark.sh [debug/release] [build/build_mem/search] [knn/range]"
+    echo "Usage: ./run_benchmark.sh [debug/release] [build/build_mem/gp/search] [knn/range]"
   ;;
 esac
-
-popd

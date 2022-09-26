@@ -30,6 +30,36 @@
 
 namespace diskann {
 
+  // DiskANN changes how the meta is stored in the first sector of
+  // the _disk.index file after commit id 8bb74ff637cb2a77c99b71368ade68c62b7ca8e0 (exclusive)
+  // This function returns <is_new_version, vector of metas uint64_ts>
+  std::pair<bool, std::vector<_u64>> get_disk_index_meta(const std::string& path) {
+      std::ifstream fin(path, std::ios::binary);
+
+      int meta_n, meta_dim;
+      const int expected_new_meta_n = 9;
+      const int expected_new_meta_n_with_reorder_data = 12;
+      const int old_meta_n = 11;
+      bool is_new_version = true;
+      std::vector<_u64> metas;
+
+      fin.read((char*)(&meta_n), sizeof(int));
+      fin.read((char*)(&meta_dim), sizeof(int));
+
+      if (meta_n == expected_new_meta_n ||
+              meta_n == expected_new_meta_n_with_reorder_data) {
+          metas.resize(meta_n);
+          fin.read((char *)(metas.data()), sizeof(_u64) * meta_n);
+      } else {
+          is_new_version = false;
+          metas.resize(old_meta_n);
+          fin.seekg(0, std::ios::beg);
+          fin.read((char *)(metas.data()), sizeof(_u64) * old_meta_n);
+      }
+      fin.close();
+      return {is_new_version, metas};
+  }
+
   void add_new_file_to_single_index(std::string index_file,
                                     std::string new_file) {
     std::unique_ptr<_u64[]> metadata;

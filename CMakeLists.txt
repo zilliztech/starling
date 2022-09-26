@@ -17,6 +17,8 @@
 # Some variables like MSVC are defined only after project(), so put that first.
 project(diskann)
 
+add_subdirectory(graph_partition)
+
 if(MSVC)
 	cmake_minimum_required(VERSION 3.15)
 else()

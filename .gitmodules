@@ -1,3 +1,6 @@
 [submodule "gperftools"]
 	path = gperftools
 	url = https://github.com/gperftools/gperftools.git
+[submodule "graph_partition"]
+	path = graph_partition
+	url = https://github.com/SonglinLife/SSD_BASED_PLAN.git

@@ -7,6 +7,8 @@
 # DIST_FN=l2
 # B=0.3
 # K=10
+DATA_DIM=128
+DATA_N=10000000
 
 # SSNPP
 BASE_PATH=/data/datasets/SSNPP/FB_ssnpp_database.10M.u8bin
@@ -17,3 +19,5 @@ DATA_TYPE=uint8
 DIST_FN=l2
 B=0.6
 RADIUS=96237
+DATA_DIM=256
+DATA_N=10000000
