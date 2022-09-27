@@ -202,3 +202,46 @@ void LinuxAlignedFileReader::read(std::vector<AlignedRead> &read_reqs,
   //<< "\n";
   execute_io(ctx, this->file_desc, read_reqs);
 }
+
+
+int LinuxAlignedFileReader::submit_reqs(std::vector<AlignedRead> &read_reqs,
+                                         io_context_t &ctx) {
+  assert(this->file_desc != -1);
+
+  if (read_reqs.size() > MAX_EVENTS) {
+    std::cerr << "The number of requests should not exceed " << MAX_EVENTS << std::endl;
+    exit(-1);
+  }
+  int n_ops = read_reqs.size();
+  std::vector<iocb_t *>    cbs(n_ops, nullptr);
+  std::vector<io_event_t>  evts(n_ops);
+  std::vector<struct iocb> cb(n_ops);
+  for (int j = 0; j < n_ops; j++) {
+    io_prep_pread(cb.data() + j, this->file_desc, read_reqs[j].buf,
+                  read_reqs[j].len,
+                  read_reqs[j].offset);
+  }
+  for (int i = 0; i < n_ops; i++) {
+    cbs[i] = cb.data() + i;
+  }
+
+  int ret = io_submit(ctx, (int64_t) n_ops, cbs.data());
+  if (ret != n_ops) {
+    std::cerr << "io_submit() failed; returned " << ret
+              << ", expected=" << n_ops << ", ernno=" << errno << "="
+              << ::strerror(-ret);
+    std::cout << "ctx: " << ctx << "\n";
+    exit(-1);
+  }
+  return n_ops;
+}
+
+void LinuxAlignedFileReader::get_events(IOContext& ctx, int n_ops) {
+  std::vector<io_event_t> evts(n_ops);
+  auto ret = io_getevents(ctx, (int64_t) n_ops, (int64_t) n_ops,
+                          evts.data(), nullptr);
+  if (ret != (int64_t) n_ops) {
+    std::cerr << "io_getevents() failed; returned " << ret;
+    exit(-1);
+  }
+}

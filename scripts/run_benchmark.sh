@@ -26,8 +26,12 @@ GP_DESCEND_TIMES=0
 BM_LIST=(4)
 T_LIST=(16)
 CACHE=0
-MEM_L=0
+MEM_L=0 # non-zero to enable
 MEM_TOPK=10
+
+# Page Search
+USE_PAGE_SEARCH=1 # 0 for beam search, 1 for page search (default)
+PS_USE_RATIO=1.0
 
 # KNN
 LS="100 120"
@@ -102,26 +106,45 @@ case $2 in
   ;;
   gp)
     check_dir_and_make_if_absent ${GP_PATH}
-    OLD_INDEX_FILE=${INDEX_PREFIX_PATH}_disk_old.index
+    OLD_INDEX_FILE=${INDEX_PREFIX_PATH}_disk_beam_search.index
     if [ ! -f "$OLD_INDEX_FILE" ]; then
       OLD_INDEX_FILE=${INDEX_PREFIX_PATH}_disk.index
     fi
     GP_FILE_PATH=${GP_PATH}_part.bin
+    echo "Running graph partition... ${GP_FILE_PATH}.log"
     time ../graph_partition/SSD_Based_Plan $DATA_DIM $DATA_N ${OLD_INDEX_FILE} \
       $DATA_TYPE $GP_FILE_PATH $GP_T $GP_TIMES $GP_DESCEND_TIMES 0 > ${GP_FILE_PATH}.log
     
+    echo "Running relayout... ${GP_PATH}relayout.log"
     time ./utils/index_relayout ${OLD_INDEX_FILE} ${GP_FILE_PATH} > ${GP_PATH}relayout.log
-    if [ ! -f "${INDEX_PREFIX_PATH}_disk_old.index" ]; then
-      mv $OLD_INDEX_FILE ${INDEX_PREFIX_PATH}_disk_old.index
+    if [ ! -f "${INDEX_PREFIX_PATH}_disk_beam_search.index" ]; then
+      mv $OLD_INDEX_FILE ${INDEX_PREFIX_PATH}_disk_beam_search.index
     fi
+    #TODO: Use only one index file
     cp ${GP_PATH}_part_tmp.index ${INDEX_PREFIX_PATH}_disk.index
+    cp ${GP_FILE_PATH} ${INDEX_PREFIX_PATH}_partition.bin
   ;;
   search)
     if [ ! -d "$INDEX_PREFIX_PATH" ]; then
       echo "Directory $INDEX_PREFIX_PATH is not exist. Build it first?"
       exit 1
     fi
-    
+
+    # choose the disk index file by settings
+    DISK_FILE_PATH=${INDEX_PREFIX_PATH}_disk.index
+    if [ $USE_PAGE_SEARCH -eq 1 ]; then
+      if [ ! -f ${INDEX_PREFIX_PATH}_partition.bin ]; then
+        echo "Partition file not found. Run the script with gp option first."
+        exit 1
+      fi
+      echo "Using Page Search"
+    else
+      if [ -f ${DISK_FILE_PATH} ]; then
+        DISK_FILE_PATH=${INDEX_PREFIX_PATH}_disk_beam_search.index
+      fi
+      echo "Using Beam Search"
+    fi
+
     case $3 in
       knn)
         log_arr=()
@@ -129,7 +152,7 @@ case $2 in
         do
           for T in ${T_LIST[@]}
           do
-            SEARCH_LOG=${INDEX_PREFIX_PATH}search_K${K}_CACHE${CACHE}_BW${BW}_T${T}_MEML${MEM_L}_MEMK${MEM_TOPK}.log
+            SEARCH_LOG=${INDEX_PREFIX_PATH}search_K${K}_CACHE${CACHE}_BW${BW}_T${T}_MEML${MEM_L}_MEMK${MEM_TOPK}_PS${USE_PAGE_SEARCH}_USE_RATIO${PS_USE_RATIO}.log
             echo "Searching... log file: ${SEARCH_LOG}"
             sync; echo 3 | sudo tee /proc/sys/vm/drop_caches; ./search_disk_index --data_type $DATA_TYPE \
               --dist_fn $DIST_FN \
@@ -143,7 +166,10 @@ case $2 in
               -L ${LS} \
               -W $BW \
               --mem_L ${MEM_L} \
-              --mem_topk ${MEM_TOPK} > ${SEARCH_LOG}
+              --mem_topk ${MEM_TOPK} \
+              --use_page_search ${USE_PAGE_SEARCH} \
+              --use_ratio ${PS_USE_RATIO} \
+              --disk_file_path ${DISK_FILE_PATH}> ${SEARCH_LOG}
             log_arr+=( ${SEARCH_LOG} )
           done
         done
@@ -154,6 +180,10 @@ case $2 in
         done
       ;;
       range)
+        # TODO: Range search needs to be modified
+        echo "Support only KNN for now"
+        exit 0
+
         log_arr=()
         for BW in ${BM_LIST[@]}
         do
