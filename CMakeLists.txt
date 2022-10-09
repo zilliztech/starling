@@ -17,6 +17,8 @@
 # Some variables like MSVC are defined only after project(), so put that first.
 project(diskann)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 add_subdirectory(graph_partition)
 
 if(MSVC)

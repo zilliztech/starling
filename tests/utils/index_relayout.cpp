@@ -104,20 +104,30 @@ void relayout(const char* indexname, const char* partition_name) {
 
   // this time, we load all index into mem;
   std::cout << "nnodes per sector "<<nnodes_per_sector << std::endl;
-  _u64 file_size = READ_SECTOR_LEN + READ_SECTOR_LEN * (_nd / nnodes_per_sector);
+  _u64 file_size = READ_SECTOR_LEN + READ_SECTOR_LEN * ((_nd + nnodes_per_sector - 1) / nnodes_per_sector);
   std::unique_ptr<char[]> mem_index =
       std::make_unique<char[]>(file_size);
   std::ifstream diskann_reader(indexname);
   diskann_reader.read(mem_index.get(),file_size);
   std::cout << "C: " << C << " partition_nums:" << _partition_nums
             << " _nd:" << _nd << std::endl;
-  *((_u64*)mem_index.get() + 4) = C;
-  *((_u64*)mem_index.get()) = _partition_nums * SECTOR_LEN + SECTOR_LEN;
-  std::cout << "size "<<_partition_nums *SECTOR_LEN + SECTOR_LEN << std::endl;
+
+  const _u64 disk_file_size = _partition_nums * SECTOR_LEN + SECTOR_LEN;
+  if (meta_pair.first) {
+    char* meta_buf = mem_index.get() + 2 * sizeof(int);
+    *(reinterpret_cast<_u64*>(meta_buf + 4 * sizeof(_u64))) = C;
+    *(reinterpret_cast<_u64*>(meta_buf + (meta_pair.second.size()-1) * sizeof(_u64)))
+        = disk_file_size;
+  } else {
+    _u64* meta_buf = reinterpret_cast<_u64*>(mem_index.get());
+    *meta_buf = disk_file_size;
+    *(meta_buf + 4) = C;
+  }
+  std::cout << "size "<< disk_file_size << std::endl;
   diskann_writer.write((char*) mem_index.get(),
                        SECTOR_LEN);  // copy meta data;
   for (unsigned i = 0; i < _partition_nums; i++) {
-    if (i % 10000 == 0) {
+    if (i % 100000 == 0) {
       diskann::cout << "relayout has done " << (float) i / _partition_nums
                     << std::endl;
       diskann::cout.flush();

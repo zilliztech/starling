@@ -18,6 +18,7 @@
 #include "utils.h"
 #include "windows_customizations.h"
 #include "index.h"
+#include "pq_flash_index_utils.h"
 
 #define MAX_GRAPH_DEGREE 512
 #define MAX_N_CMPS 16384
@@ -47,11 +48,13 @@ namespace diskann {
     float *aligned_query_float = nullptr;
 
     tsl::robin_set<_u64> *visited = nullptr;
+    tsl::robin_set<unsigned> *page_visited = nullptr;
 
     void reset() {
       coord_idx = 0;
       sector_idx = 0;
       visited->clear();  // does not deallocate memory.
+      page_visited->clear();
     }
   };
 
@@ -66,15 +69,21 @@ namespace diskann {
    public:
     DISKANN_DLLEXPORT PQFlashIndex(
         std::shared_ptr<AlignedFileReader> &fileReader,
-        diskann::Metric                     metric = diskann::Metric::L2);
+        diskann::Metric                     metric = diskann::Metric::L2,
+        const bool use_page_search = true);
     DISKANN_DLLEXPORT ~PQFlashIndex();
+
+    // load id to page id and graph partition layout
+    DISKANN_DLLEXPORT void load_partition_data(const std::string &index_prefix,
+        const _u64 nnodes_per_sector = 0, const _u64 num_points = 0);
 
 #ifdef EXEC_ENV_OLS
     DISKANN_DLLEXPORT int load(diskann::MemoryMappedFiles &files,
                                uint32_t num_threads, const char *index_prefix);
 #else
     // load compressed data, and obtains the handle to the disk-resident index
-    DISKANN_DLLEXPORT int  load(uint32_t num_threads, const char *index_prefix);
+    DISKANN_DLLEXPORT int  load(uint32_t num_threads, const char *index_prefix,
+        const std::string& disk_index_path);
 #endif
 
     DISKANN_DLLEXPORT void load_mem_index(Metric metric, const size_t query_dim,
@@ -107,6 +116,11 @@ namespace diskann {
         const T *query, const _u64 k_search, const _u64 l_search, _u64 *res_ids,
         float *res_dists, const _u64 beam_width, const _u32 io_limit,
         const bool use_reorder_data = false, QueryStats *stats = nullptr);
+
+    DISKANN_DLLEXPORT void page_search(
+        const T *query, const _u64 k_search, const _u64 l_search, _u64 *res_ids,
+        float *res_dists, const _u64 beam_width, const _u32 io_limit,
+        const bool use_reorder_data = false, const float use_ratio = 1.0f, QueryStats *stats = nullptr);
 
     DISKANN_DLLEXPORT _u32 range_search(const T *query1, const double range,
                                         const _u64          min_l_search,
@@ -205,6 +219,13 @@ namespace diskann {
     _u32 mem_topk_ = 0;
     std::unique_ptr<Index<T, uint32_t>> mem_index_;
     std::vector<unsigned> memid2diskid_;
+
+    // page search
+    bool use_page_search_ = true;
+    std::vector<unsigned> id2page_;
+    std::vector<std::vector<unsigned>> gp_layout_;
+    // tsl::robin_map<_u32, char*> page_cache_;
+    // tsl::robin_map<_u32, char*> node_cache_;
 
 #ifdef EXEC_ENV_OLS
     // Set to a larger value than the actual header to accommodate
