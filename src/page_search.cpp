@@ -3,9 +3,6 @@
 #include "pq_flash_index.h"
 #include "timer.h"
 
-namespace {
-} // namespace anonymous
-
 namespace diskann {
   template<typename T>
   void PQFlashIndex<T>::load_partition_data(const std::string &index_prefix,
@@ -62,7 +59,7 @@ namespace diskann {
       query_norm += query1[i] * query1[i];
     }
 
-    // if inner product, we laso normalize the query and set the last coordinate
+    // if inner product, we also normalize the query and set the last coordinate
     // to 0 (this is the extra coordindate used to convert MIPS to L2 search)
     if (metric == diskann::Metric::INNER_PRODUCT) {
       query_norm = std::sqrt(query_norm);
@@ -82,7 +79,6 @@ namespace diskann {
 
     // pointers to buffers for data
     T *   data_buf = query_scratch->coord_scratch;
-    _u64 &data_buf_idx = query_scratch->coord_idx;
     _mm_prefetch((char *) data_buf, _MM_HINT_T1);
 
     // sector scratch
@@ -97,19 +93,11 @@ namespace diskann {
     float *dist_scratch = query_scratch->aligned_dist_scratch;
     _u8 *  pq_coord_scratch = query_scratch->aligned_pq_coord_scratch;
 
-    // lambda to batch compute query<-> node distances in PQ space
-    auto compute_dists = [this, pq_coord_scratch, pq_dists](const unsigned *ids,
-                                                            const _u64 n_ids,
-                                                            float *dists_out) {
-      pq_flash_index_utils::aggregate_coords(ids, n_ids, this->data, this->n_chunks,
-                         pq_coord_scratch);
-      pq_flash_index_utils::pq_dist_lookup(pq_coord_scratch, n_ids, this->n_chunks, pq_dists,
-                       dists_out);
-    };
     Timer                 query_timer, io_timer, cpu_timer;
     std::vector<Neighbor> retset(l_search + 1);
     tsl::robin_set<_u64> &visited = *(query_scratch->visited);
     tsl::robin_set<unsigned> &page_visited = *(query_scratch->page_visited);
+    unsigned cur_list_size = 0;
 
     std::vector<Neighbor> full_retset;
     full_retset.reserve(4096);
@@ -126,9 +114,58 @@ namespace diskann {
       }
     }
 
-    unsigned cur_list_size = 0;
+    // lambda to batch compute query<-> node distances in PQ space
+    auto compute_pq_dists = [this, pq_coord_scratch, pq_dists](const unsigned *ids,
+                                                            const _u64 n_ids,
+                                                            float *dists_out) {
+      pq_flash_index_utils::aggregate_coords(ids, n_ids, this->data, this->n_chunks,
+                         pq_coord_scratch);
+      pq_flash_index_utils::pq_dist_lookup(pq_coord_scratch, n_ids, this->n_chunks, pq_dists,
+                       dists_out);
+    };
+
+    auto compute_extact_dists_and_push = [&](const char* node_buf, const unsigned id) -> float {
+      T *node_fp_coords_copy = data_buf;
+      memcpy(node_fp_coords_copy, node_buf, disk_bytes_per_point);
+      float cur_expanded_dist = dist_cmp->compare(query, node_fp_coords_copy,
+                                            (unsigned) aligned_dim);
+      full_retset.push_back(Neighbor(id, cur_expanded_dist, true));
+      return cur_expanded_dist;
+    };
+
+    auto compute_and_push_nbrs = [&](const char *node_buf, unsigned& nk) {
+      unsigned *node_nbrs = OFFSET_TO_NODE_NHOOD(node_buf);
+      unsigned nnbrs = *(node_nbrs++);
+      unsigned nbors_cand_size = 0;
+      for (unsigned m = 0; m < nnbrs; ++m) {
+        if (visited.find(node_nbrs[m]) == visited.end()) {
+          node_nbrs[nbors_cand_size++] = node_nbrs[m];
+          visited.insert(node_nbrs[m]);
+        }
+      }
+      if (nbors_cand_size) {
+        compute_pq_dists(node_nbrs, nbors_cand_size, dist_scratch);
+        for (unsigned m = 0; m < nbors_cand_size; ++m) {
+          const int nbor_id = node_nbrs[m];
+          const float nbor_dist = dist_scratch[m];
+          if (stats != nullptr) {
+            stats->n_cmps++;
+          }
+          if (nbor_dist >= retset[cur_list_size - 1].distance &&
+              (cur_list_size == l_search))
+            continue;
+          Neighbor nn(nbor_id, nbor_dist, true);
+          // Return position in sorted list where nn inserted
+          auto     r = InsertIntoPool(retset.data(), cur_list_size, nn);
+          if (cur_list_size < l_search) ++cur_list_size;
+          // nk logs the best position in the retset that was updated due to neighbors of n.
+          if (r < nk) nk = r;
+        }
+      }
+    };
+
     auto compute_and_add_to_retset = [&](const unsigned *node_ids, const _u64 n_ids) {
-      compute_dists(node_ids, n_ids, dist_scratch);
+      compute_pq_dists(node_ids, n_ids, dist_scratch);
       for (_u64 i = 0; i < n_ids; ++i) {
         retset[cur_list_size].id = node_ids[i];
         retset[cur_list_size].distance = dist_scratch[i];
@@ -167,7 +204,7 @@ namespace diskann {
     int n_ops;
 
     while (k < cur_list_size && num_ios < io_limit) {
-      auto nk = cur_list_size;
+      unsigned nk = cur_list_size;
       // clear iteration state
       frontier.clear();
       frontier_nhoods.clear();
@@ -185,17 +222,17 @@ namespace diskann {
         if (page_visited.find(pid) == page_visited.end() && retset[marker].flag) {
           num_seen++;
           // TODO: add different cache strategies
-          auto iter = nhood_cache.find(retset[marker].id);
-          if (iter != nhood_cache.end()) {
+          // auto iter = nhood_cache.find(retset[marker].id);
+          // if (iter != nhood_cache.end()) {
             // cached_nhoods.push_back(
             //     std::make_pair(retset[marker].id, iter->second));
             // if (stats != nullptr) {
             //   stats->n_cache_hits++;
             // }
-          } else {
-            frontier.push_back(retset[marker].id);
-            page_visited.insert(pid);
-          }
+          // } else {
+          frontier.push_back(retset[marker].id);
+          page_visited.insert(pid);
+          // }
           retset[marker].flag = false;
           if (this->count_visited_nodes) {
             reinterpret_cast<std::atomic<_u32> &>(
@@ -234,58 +271,27 @@ namespace diskann {
         const unsigned last_io_id = last_io_ids[i];
         char    *sector_buf = last_pages.data() + i * SECTOR_LEN;
         const unsigned pid = id2page_[last_io_id];
-        const size_t p_size = gp_layout_[pid].size();
-        // minus one for the vector that is already computed previously
+        const unsigned p_size = gp_layout_[pid].size();
+        // minus one for the vector that is computed previously
         unsigned vis_size = use_ratio * (p_size - 1);
-        std::vector<std::tuple<float, unsigned, char*>> vis_cand;
+        std::vector<std::pair<float, const char*>> vis_cand;
         vis_cand.reserve(p_size);
 
         // compute exact distances of the vectors within the page
-        for (size_t j = 0; j < p_size; ++j) {
+        for (unsigned j = 0; j < p_size; ++j) {
           const unsigned id = gp_layout_[pid][j];
           if (id == last_io_id) continue;
-
-          char* node_buf = sector_buf + j * max_node_len;
-          T *node_fp_coords_copy = data_buf;
-          memcpy(node_fp_coords_copy, node_buf, disk_bytes_per_point);
-          float cur_expanded_dist = dist_cmp->compare(query, node_fp_coords_copy,
-                                                (unsigned) aligned_dim);
-          full_retset.push_back(Neighbor(id, cur_expanded_dist, true));
-          vis_cand.push_back({cur_expanded_dist, id, sector_buf + j * max_node_len});
+          const char* node_buf = sector_buf + j * max_node_len;
+          float dist = compute_extact_dists_and_push(node_buf, id);
+          vis_cand.emplace_back(dist, node_buf);
         }
         if (vis_size && vis_size != p_size) {
           std::sort(vis_cand.begin(), vis_cand.end());
         }
 
         // compute PQ distances for neighbours of the vectors in the page
-        for (size_t j = 0; j < vis_size; ++j) {
-          const auto [dist, id, node_buf] = vis_cand[j];
-          unsigned *nbors = OFFSET_TO_NODE_NHOOD(node_buf);
-          unsigned adj_size = *(nbors++);
-          unsigned nbors_cand_size = 0;
-          for (unsigned m = 0; m < adj_size; ++m) {
-            if (visited.find(nbors[m]) == visited.end()) {
-              nbors[nbors_cand_size++] = nbors[m];
-              visited.insert(nbors[m]);
-            }
-          }
-          if (nbors_cand_size) {
-            compute_dists(nbors, nbors_cand_size, dist_scratch);
-            for (unsigned m = 0; m < nbors_cand_size; ++m) {
-              const int nbor_id = nbors[m];
-              const float nbor_dist = dist_scratch[m];
-              if (stats != nullptr) {
-                stats->n_cmps++;
-              }
-              if (nbor_dist >= retset[cur_list_size - 1].distance &&
-                  (cur_list_size == l_search))
-                continue;
-              Neighbor nn(nbor_id, nbor_dist, true);
-              auto     r = InsertIntoPool(retset.data(), cur_list_size, nn);
-              if (cur_list_size < l_search) ++cur_list_size;
-              if (r < nk) nk = r;
-            }
-          }
+        for (unsigned j = 0; j < vis_size; ++j) {
+          compute_and_push_nbrs(vis_cand[j].second, nk);
         }
       }
       last_io_ids.clear();
@@ -316,7 +322,7 @@ namespace diskann {
 
         // compute node_nbrs <-> query dists in PQ space
         cpu_timer.reset();
-        compute_dists(node_nbrs, nnbrs, dist_scratch);
+        compute_pq_dists(node_nbrs, nnbrs, dist_scratch);
         if (stats != nullptr) {
           stats->n_cmps += (double) nnbrs;
           stats->cpu_us += (double) cpu_timer.elapsed();
@@ -364,37 +370,8 @@ namespace diskann {
           unsigned id = gp_layout_[pid][j];
           if (id == frontier_nhood.first) {
             char *node_buf = sector_buf + j * max_node_len;
-            unsigned *node_nbrs = OFFSET_TO_NODE_NHOOD(node_buf);
-            unsigned nnbrs = *(node_nbrs++);
-            T *node_fp_coords_copy = data_buf;
-            memcpy(node_fp_coords_copy, node_buf, disk_bytes_per_point);
-            float cur_expanded_dist = dist_cmp->compare(query, node_fp_coords_copy,
-                                                (unsigned) aligned_dim);
-            full_retset.push_back(Neighbor(id, cur_expanded_dist, true));
-
-            compute_dists(node_nbrs, nnbrs, dist_scratch);
-            for (_u64 m = 0; m < nnbrs; ++m) {
-              unsigned id = node_nbrs[m];
-              if (visited.find(id) == visited.end()) {
-                visited.insert(id);
-                float dist = dist_scratch[m];
-                if (stats != nullptr) {
-                  stats->n_cmps++;
-                }
-                if (dist >= retset[cur_list_size - 1].distance &&
-                    (cur_list_size == l_search))
-                  continue;
-                Neighbor nn(id, dist, true);
-                auto     r = InsertIntoPool(
-                    retset.data(), cur_list_size,
-                    nn);  // Return position in sorted list where nn inserted.
-                if (cur_list_size < l_search)
-                  ++cur_list_size;
-                if (r < nk)
-                  nk = r;  // nk logs the best position in the retset that was
-                           // updated due to neighbors of n.
-              }
-            }
+            compute_extact_dists_and_push(node_buf, id);
+            compute_and_push_nbrs(node_buf, nk);
           }
         }
       }
@@ -413,7 +390,8 @@ namespace diskann {
               });
 
     // copy k_search values
-    for (_u64 i = 0, t = 0; i < full_retset.size() && t < k_search; i++) {
+    _u64 t = 0;
+    for (_u64 i = 0; i < full_retset.size() && t < k_search; i++) {
       if(i > 0 && full_retset[i].id == full_retset[i-1].id){
         continue;
       }
@@ -430,6 +408,11 @@ namespace diskann {
         }
       }
       t++;
+    }
+
+    if (t < k_search) {
+      diskann::cerr << "The number of unique ids is less than topk" << std::endl;
+      exit(1);
     }
 
     this->thread_data.push(data);
