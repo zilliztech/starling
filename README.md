@@ -27,7 +27,7 @@ Configure datasets and parameters in `scripts/config.sh` and the beginning of `s
 
 
 ## Uniformly Sampled In-memory Navigation Graph
-For building, modify `MEM_R`, `MEM_BUILD_L`, `MEM_ALPHA`, `SAMPLING_RATE` and run 
+For building, modify `MEM_R`, `MEM_BUILD_L`, `MEM_ALPHA`, `MEM_RAND_SAMPLING_RATE` and run 
 
 ```bash
 ./run_benchmark.sh [debug/release] build_mem
