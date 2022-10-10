@@ -1,4 +1,8 @@
-# SIFT
+#!/bin/sh
+
+###############
+#   SIFT10M   #
+###############
 BASE_PATH=/data/datasets/sift10M/base10M.fbin
 QUERY_FILE=/data/datasets/sift10M/query.fbin
 GT_FILE=/data/datasets/sift10M/10M-topk1000-gt
@@ -10,7 +14,9 @@ K=10
 DATA_DIM=128
 DATA_N=10000000
 
-# SSNPP
+################
+#   SSNPP10M   #
+################
 # BASE_PATH=/data/datasets/SSNPP/FB_ssnpp_database.10M.u8bin
 # QUERY_FILE=/data/datasets/SSNPP/FB_ssnpp_public_queries.u8bin
 # GT_FILE=/data/datasets/SSNPP/ssnpp-10M-gt
