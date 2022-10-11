@@ -487,22 +487,15 @@ namespace diskann {
 
   template<typename T>
   void PQFlashIndex<T>::load_mem_index(Metric metric, const size_t query_dim, 
-      const std::string& index_prefix, const _u32 num_threads,
+      const std::string& mem_index_path, const _u32 num_threads,
       const _u32 mem_L, const _u32 mem_topk) {
-      const auto index_file = index_prefix + "MEM/_index";
-      const auto index_idmap = index_prefix + "MEM/_index.data";
-      std::cout << "Reading in-memory index file from " << index_file << " and "
-        << index_idmap << std::endl;
+      if (mem_index_path.empty()) {
+        diskann::cerr << "mem_index_path is needed" << std::endl;
+        exit(1);
+      }
+      mem_index_ = std::make_unique<diskann::Index<T, uint32_t>>(metric, query_dim, 0, false, true);
+      mem_index_->load(mem_index_path.c_str(), num_threads, mem_L);
 
-      mem_index_ = std::make_unique<diskann::Index<T, uint32_t>>(metric, query_dim, 0, false);
-      mem_index_->load(index_file.c_str(), num_threads, mem_L);
-
-      std::ifstream reader(index_idmap);
-      unsigned size;
-      reader.read((char*)&size, sizeof(unsigned));
-      memid2diskid_.resize(size);
-      reader.read((char*)memid2diskid_.data(), sizeof(unsigned)*size);
-      reader.close();
       this->mem_L_ = mem_L;
       this->mem_topk_ = mem_topk;
   }
@@ -902,9 +895,10 @@ namespace diskann {
     };
 
     if (mem_L_) {
-      std::vector<unsigned> mem_results(mem_topk_);
-      mem_index_->search(query, mem_topk_, mem_L_, mem_results.data()); // returns <hops, cmps>
-      compute_and_add_to_retset(mem_results.data(), mem_topk_);
+      std::vector<unsigned> mem_tags(mem_topk_);
+      std::vector<T*> res = std::vector<T*>();
+      mem_index_->search_with_tags(query, mem_topk_, mem_L_, mem_tags.data(), nullptr, res);
+      compute_and_add_to_retset(mem_tags.data(), mem_topk_);
     } else {
       compute_and_add_to_retset(&best_medoid, 1);
     }

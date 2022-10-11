@@ -22,7 +22,7 @@ namespace po = boost::program_options;
 
 template<typename T, typename TagT = uint32_t>
 int build_in_memory_index(const diskann::Metric& metric,
-                          const std::string& data_path, const unsigned R,
+                          const std::string& data_prefix, const unsigned R,
                           const unsigned L, const float alpha,
                           const std::string& save_path,
                           const unsigned     num_threads) {
@@ -35,12 +35,29 @@ int build_in_memory_index(const diskann::Metric& metric,
   paras.Set<bool>("saturate_graph", 0);
   paras.Set<unsigned>("num_threads", num_threads);
 
-  _u64 data_num, data_dim;
-  diskann::get_bin_metadata(data_path, data_num, data_dim);
+  const std::string data_path = data_prefix + "_data.bin";
+  const std::string tags_path = data_prefix + "_ids.bin";
 
-  diskann::Index<T, TagT> index(metric, data_dim, data_num, false, false);
+  _u64 data_num, data_dim, tags_num, tags_dim;
+  diskann::get_bin_metadata(data_path, data_num, data_dim);
+  diskann::get_bin_metadata(tags_path, tags_num, tags_dim);
+  if (data_num != tags_num) {
+    diskann::cerr << "The number of data and tags mismatch" << std::endl;
+    exit(1);
+  }
+  std::ifstream reader;
+  reader.exceptions(std::ifstream::failbit | std::ifstream::badbit);
+  diskann::cout << "Opening bin file " << tags_path << "... " << std::endl;
+  reader.open(tags_path, std::ios::binary | std::ios::ate);
+  reader.seekg(2 * sizeof(_u32), std::ios::beg);
+  _u32 tags_size = tags_num * tags_dim;
+  std::vector<_u32> tags(tags_size);
+  reader.read((char*)tags.data(), tags_size * sizeof(_u32));
+  reader.close();
+
+  diskann::Index<T, TagT> index(metric, data_dim, data_num, false, true);
   auto                    s = std::chrono::high_resolution_clock::now();
-  index.build(data_path.c_str(), data_num, paras);
+  index.build(data_path.c_str(), data_num, paras, tags);
 
   std::chrono::duration<double> diff =
       std::chrono::high_resolution_clock::now() - s;
