@@ -117,6 +117,14 @@ namespace diskann {
         float *res_dists, const _u64 beam_width, const _u32 io_limit,
         const bool use_reorder_data = false, QueryStats *stats = nullptr);
 
+    DISKANN_DLLEXPORT void generate_node_nbrs_freq(
+        const std::string& freq_save_path,
+        const size_t query_num,
+        const T *query, const size_t query_aligned_dim,
+        const _u64 k_search, const _u64 l_search, _u64 *res_ids,
+        float *res_dists, const _u64 beam_width, const _u32 io_limit,
+        const bool use_reorder_data = false, QueryStats *stats = nullptr);
+
     DISKANN_DLLEXPORT void page_search(
         const T *query, const _u64 k_search, const _u64 l_search, _u64 *res_ids,
         float *res_dists, const _u64 beam_width, const _u32 io_limit,
@@ -211,6 +219,7 @@ namespace diskann {
     _u64                           max_nthreads;
     bool                           load_flag = false;
     bool                           count_visited_nodes = false;
+    bool                           count_visited_nbrs = false;
     bool                           reorder_data_exists = false;
     _u64                           reoreder_data_offset = 0;
 
@@ -226,6 +235,13 @@ namespace diskann {
     std::vector<std::vector<unsigned>> gp_layout_;
     // tsl::robin_map<_u32, char*> page_cache_;
     // tsl::robin_map<_u32, char*> node_cache_;
+
+    // count the visit frequency of the neighbors
+    // the length of the vector is equal to the total number of vectors in the base
+    // idx = node_id, the key represents the neighbor id, value is its count
+    std::vector<std::unordered_map<_u32, _u32>> nbrs_freq_counter_;
+
+    void init_node_visit_counter();
 
 #ifdef EXEC_ENV_OLS
     // Set to a larger value than the actual header to accommodate

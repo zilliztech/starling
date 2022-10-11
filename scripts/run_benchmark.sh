@@ -9,9 +9,10 @@ INDEX_PREFIX_PATH="${PREFIX}_M${M}_R${R}_L${BUILD_L}_B${B}/"
 MEM_SAMPLE_PATH="${INDEX_PREFIX_PATH}SAMPLE_RATE_${MEM_RAND_SAMPLING_RATE}/"
 MEM_INDEX_PATH="${INDEX_PREFIX_PATH}MEM_R_${MEM_R}_L_${MEM_BUILD_L}_ALPHA_${MEM_ALPHA}/"
 GP_PATH="${INDEX_PREFIX_PATH}GP_TIMES_${GP_TIMES}_DESCEND_${GP_DESCEND_TIMES}/"
+FREQ_PATH="${INDEX_PREFIX_PATH}FREQ/NQ_${FREQ_QUERY_CNT}_BM_${FREQ_BM}_L_${FREQ_L}_T_${FREQ_T}/"
 
 print_usage_and_exit() {
-  echo "Usage: ./run_benchmark.sh [debug/release] [build/build_mem/gp/search] [knn/range]"
+  echo "Usage: ./run_benchmark.sh [debug/release] [build/build_mem/freq/gp/search] [knn/range]"
   exit 1
 }
 
@@ -75,6 +76,35 @@ case $2 in
       -R ${MEM_R} \
       -L ${MEM_BUILD_L} \
       --alpha ${MEM_ALPHA} > ${MEM_INDEX_PATH}build.log
+  ;;
+  freq)
+    check_dir_and_make_if_absent ${FREQ_PATH}
+    FREQ_LOG="${FREQ_PATH}freq.log"
+
+    DISK_FILE_PATH=${INDEX_PREFIX_PATH}_disk_beam_search.index
+    if [ ! -f $DISK_FILE_PATH ]; then
+      DISK_FILE_PATH=${INDEX_PREFIX_PATH}_disk.index
+    fi
+
+    echo "Generating frequency file... ${FREQ_LOG}"
+    time ${EXE_PATH}/tests/search_disk_index_save_freq \
+              --data_type $DATA_TYPE \
+              --dist_fn $DIST_FN \
+              --index_path_prefix $INDEX_PREFIX_PATH \
+              --freq_save_path $FREQ_PATH \
+              --query_file $FREQ_QUERY_FILE \
+              --expected_query_num $FREQ_QUERY_CNT \
+              --gt_file $GT_FILE \
+              -K $K \
+              --result_path ${FREQ_PATH}result \
+              --num_nodes_to_cache ${FREQ_CACHE} \
+              -T $FREQ_T \
+              -L $FREQ_L \
+              -W $FREQ_BM \
+              --mem_L ${MEM_L} \
+              --mem_topk ${MEM_TOPK} \
+              --use_page_search 0 \
+              --disk_file_path ${DISK_FILE_PATH} > ${FREQ_LOG}
   ;;
   gp)
     check_dir_and_make_if_absent ${GP_PATH}

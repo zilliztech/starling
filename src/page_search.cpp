@@ -201,7 +201,7 @@ namespace diskann {
     std::vector<unsigned> last_io_ids;
     last_io_ids.reserve(2 * beam_width);
     std::vector<char> last_pages(SECTOR_LEN * beam_width * 2);
-    int n_ops;
+    int n_ops = 0;
 
     while (k < cur_list_size && num_ios < io_limit) {
       unsigned nk = cur_list_size;
@@ -234,11 +234,6 @@ namespace diskann {
           page_visited.insert(pid);
           // }
           retset[marker].flag = false;
-          if (this->count_visited_nodes) {
-            reinterpret_cast<std::atomic<_u32> &>(
-                this->node_visit_counter[retset[marker].id].second)
-                .fetch_add(1);
-          }
         }
         marker++;
       }

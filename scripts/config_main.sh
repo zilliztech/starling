@@ -22,6 +22,12 @@ MEM_RAND_SAMPLING_RATE=0.01
 ##########################
 FREQ_QUERY_FILE=$QUERY_FILE
 FREQ_QUERY_CNT=0 # Set 0 to use all (default)
+FREQ_BM=4
+FREQ_L=100 # only support one value at a time for now
+FREQ_T=16
+FREQ_CACHE=0
+FREQ_MEM_L=0 # non-zero to enable
+FREQ_MEM_TOPK=10
 
 #######################
 #   Graph Partition   #
