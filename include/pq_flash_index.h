@@ -87,7 +87,7 @@ namespace diskann {
 #endif
 
     DISKANN_DLLEXPORT void load_mem_index(Metric metric, const size_t query_dim,
-        const std::string &index_prefix, const _u32 num_threads,
+        const std::string &mem_index_path, const _u32 num_threads,
         const _u32 mem_L, const _u32 mem_topk);
 
     DISKANN_DLLEXPORT void load_cache_list(std::vector<uint32_t> &node_list);

@@ -52,6 +52,7 @@ void print_stats(std::string category, std::vector<float> percentiles,
 template<typename T>
 int search_disk_index(
     diskann::Metric& metric, const std::string& index_path_prefix,
+    const std::string& mem_index_path,
     const std::string& freq_save_path,
     const std::string& result_output_prefix, const std::string& query_file,
     const _u64 expected_query_num,
@@ -127,7 +128,7 @@ int search_disk_index(
 
   // load in-memory navigation graph
   if (mem_L) {
-    _pFlashIndex->load_mem_index(metric, query_aligned_dim, index_path_prefix, num_threads, mem_L, mem_topk);
+    _pFlashIndex->load_mem_index(metric, query_aligned_dim, mem_index_path, num_threads, mem_L, mem_topk);
   }
 
   // cache bfs levels
@@ -264,7 +265,7 @@ int search_disk_index(
 
 int main(int argc, char** argv) {
   std::string data_type, dist_fn, index_path_prefix, result_path_prefix,
-      query_file, gt_file, disk_file_path, freq_save_path;
+      query_file, gt_file, disk_file_path, freq_save_path, mem_index_path;
   unsigned              num_threads, K, W, num_nodes_to_cache, search_io_limit;
   unsigned              mem_topk, mem_L;
   _u64                  expected_query_num = 0;
@@ -332,6 +333,8 @@ int main(int argc, char** argv) {
                        "The number of query used to search. Set to zero to use all");
     desc.add_options()("freq_save_path", po::value<std::string>(&freq_save_path)->required(),
                        "frequency file save path");
+    desc.add_options()("mem_index_path", po::value<std::string>(&mem_index_path)->default_value(""),
+                       "The prefix path of the mem_index");
 
     po::variables_map vm;
     po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -384,20 +387,20 @@ int main(int argc, char** argv) {
 
   try {
     if (data_type == std::string("float"))
-      return search_disk_index<float>(metric, index_path_prefix, freq_save_path,
+      return search_disk_index<float>(metric, index_path_prefix, mem_index_path, freq_save_path,
                                       result_path_prefix, query_file, expected_query_num, gt_file,
                                       disk_file_path,
                                       num_threads, K, W, num_nodes_to_cache,
                                       search_io_limit, Lvec, mem_topk, mem_L, use_page_search, use_ratio, use_reorder_data);
     else if (data_type == std::string("int8"))
-      return search_disk_index<int8_t>(metric, index_path_prefix, freq_save_path,
+      return search_disk_index<int8_t>(metric, index_path_prefix, mem_index_path, freq_save_path,
                                        result_path_prefix, query_file, expected_query_num, gt_file,
                                        disk_file_path,
                                        num_threads, K, W, num_nodes_to_cache,
                                        search_io_limit, Lvec, mem_topk, mem_L, use_page_search, use_ratio, use_reorder_data);
     else if (data_type == std::string("uint8"))
       return search_disk_index<uint8_t>(
-          metric, index_path_prefix, freq_save_path, result_path_prefix, query_file, expected_query_num, gt_file,
+          metric, index_path_prefix, mem_index_path, freq_save_path, result_path_prefix, query_file, expected_query_num, gt_file,
           disk_file_path, num_threads, K, W, num_nodes_to_cache, search_io_limit, Lvec, mem_topk, mem_L,
           use_page_search, use_ratio, use_reorder_data);
     else {

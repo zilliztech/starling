@@ -71,7 +71,7 @@ case $2 in
     time ${EXE_PATH}/tests/build_memory_index \
       --data_type ${DATA_TYPE} \
       --dist_fn ${DIST_FN} \
-      --data_path ${MEM_SAMPLE_PATH}_data.bin \
+      --data_path ${MEM_SAMPLE_PATH} \
       --index_path_prefix ${MEM_INDEX_PATH}_index \
       -R ${MEM_R} \
       -L ${MEM_BUILD_L} \
@@ -169,6 +169,7 @@ case $2 in
               -W $BW \
               --mem_L ${MEM_L} \
               --mem_topk ${MEM_TOPK} \
+              --mem_index_path ${MEM_INDEX_PATH}_index \
               --use_page_search ${USE_PAGE_SEARCH} \
               --use_ratio ${PS_USE_RATIO} \
               --disk_file_path ${DISK_FILE_PATH}> ${SEARCH_LOG}
@@ -205,7 +206,9 @@ case $2 in
               --range_threshold $RADIUS \
               -L $RS_LS \
               --mem_L ${MEM_L} \
-              --mem_topk ${MEM_TOPK} > ${SEARCH_LOG}
+              --mem_topk ${MEM_TOPK} \
+              --mem_index_path ${MEM_INDEX_PATH}_index \
+              > ${SEARCH_LOG}
             log_arr+=( ${SEARCH_LOG} )
           done
         done
