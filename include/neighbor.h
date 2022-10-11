@@ -14,10 +14,15 @@ namespace diskann {
     unsigned id;
     float    distance;
     bool     flag;
+    unsigned rev_id = 0; // where is this neighbor comes from
 
     Neighbor() = default;
     Neighbor(unsigned id, float distance, bool f)
         : id{id}, distance{distance}, flag(f) {
+    }
+
+    Neighbor(unsigned id, float distance, bool f, unsigned r_id)
+        : id{id}, distance{distance}, flag(f), rev_id{r_id} {
     }
 
     inline bool operator<(const Neighbor &other) const {

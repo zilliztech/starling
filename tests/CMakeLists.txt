@@ -31,3 +31,6 @@ target_link_libraries(test_insert_deletes_consolidate ${PROJECT_NAME} ${DISKANN_
 
 add_executable(search_memory_index_dynamic search_memory_index_dynamic.cpp)
 target_link_libraries(search_memory_index_dynamic ${PROJECT_NAME} ${DISKANN_TOOLS_TCMALLOC_LINK_OPTIONS} Boost::program_options)
+
+add_executable(search_disk_index_save_freq search_disk_index_save_freq.cpp)
+target_link_libraries(search_disk_index_save_freq ${PROJECT_NAME} ${DISKANN_ASYNC_LIB} ${DISKANN_TOOLS_TCMALLOC_LINK_OPTIONS} Boost::program_options)

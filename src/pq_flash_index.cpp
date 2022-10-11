@@ -23,6 +23,16 @@
 
 namespace diskann {
   template<typename T>
+  void PQFlashIndex<T>::init_node_visit_counter() {
+    this->node_visit_counter.clear();
+    this->node_visit_counter.resize(this->num_points);
+    for (_u32 i = 0; i < node_visit_counter.size(); i++) {
+      this->node_visit_counter[i].first = i;
+      this->node_visit_counter[i].second = 0;
+    }
+  }
+
+  template<typename T>
   PQFlashIndex<T>::PQFlashIndex(std::shared_ptr<AlignedFileReader> &fileReader,
                                 diskann::Metric                     m,
                                 const bool use_page_search)
@@ -233,12 +243,7 @@ namespace diskann {
       std::vector<uint32_t> &node_list) {
 #endif
     this->count_visited_nodes = true;
-    this->node_visit_counter.clear();
-    this->node_visit_counter.resize(this->num_points);
-    for (_u32 i = 0; i < node_visit_counter.size(); i++) {
-      this->node_visit_counter[i].first = i;
-      this->node_visit_counter[i].second = 0;
-    }
+    init_node_visit_counter();
 
     _u64 sample_num, sample_dim, sample_aligned_dim;
     T *  samples;
@@ -891,9 +896,7 @@ namespace diskann {
     auto compute_and_add_to_retset = [&](const unsigned *node_ids, const _u64 n_ids) {
       compute_dists(node_ids, n_ids, dist_scratch);
       for (_u64 i = 0; i < n_ids; ++i) {
-        retset[cur_list_size].id = node_ids[i];
-        retset[cur_list_size].distance = dist_scratch[i];
-        retset[cur_list_size++].flag = true;
+        retset[cur_list_size++] = {node_ids[i], dist_scratch[i], true, node_ids[i]};
         visited.insert(node_ids[i]);
       }
     };
@@ -954,6 +957,14 @@ namespace diskann {
             reinterpret_cast<std::atomic<_u32> &>(
                 this->node_visit_counter[retset[marker].id].second)
                 .fetch_add(1);
+            if (this->count_visited_nbrs) {
+              unsigned r_id = retset[marker].rev_id;
+              unsigned id = retset[marker].id;
+              if (r_id != id) {
+#pragma omp critical
+                ++(this->nbrs_freq_counter_[r_id][id]);
+              }
+            }
           }
         }
         marker++;
@@ -1032,7 +1043,7 @@ namespace diskann {
             if (dist >= retset[cur_list_size - 1].distance &&
                 (cur_list_size == l_search))
               continue;
-            Neighbor nn(id, dist, true);
+            Neighbor nn(id, dist, true, (unsigned)cached_nhood.first);
             // Return position in sorted list where nn inserted.
             auto r = InsertIntoPool(retset.data(), cur_list_size, nn);
             if (cur_list_size < l_search)
@@ -1111,7 +1122,7 @@ namespace diskann {
             if (dist >= retset[cur_list_size - 1].distance &&
                 (cur_list_size == l_search))
               continue;
-            Neighbor nn(id, dist, true);
+            Neighbor nn(id, dist, true, frontier_nhood.first);
             auto     r = InsertIntoPool(
                 retset.data(), cur_list_size,
                 nn);  // Return position in sorted list where nn inserted.
