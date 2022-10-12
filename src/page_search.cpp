@@ -177,7 +177,7 @@ namespace diskann {
     if (mem_L_) {
       std::vector<unsigned> mem_results(mem_topk_);
       mem_index_->search(query, mem_topk_, mem_L_, mem_results.data()); // returns <hops, cmps>
-      compute_and_add_to_retset(mem_results.data(), mem_topk_);
+      compute_and_add_to_retset(mem_results.data(), std::min((unsigned)mem_topk_, (unsigned)l_search));
     } else {
       compute_and_add_to_retset(&best_medoid, 1);
     }
