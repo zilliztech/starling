@@ -119,7 +119,7 @@ int search_disk_index(
 
   // load in-memory navigation graph
   if (mem_L) {
-    _pFlashIndex->load_mem_index(metric, query_aligned_dim, mem_index_path, num_threads, mem_L, mem_topk);
+    _pFlashIndex->load_mem_index(metric, query_dim, mem_index_path, num_threads, mem_L, mem_topk);
   }
 
   // cache bfs levels
