@@ -218,7 +218,7 @@ namespace diskann {
       // distribute cache and disk-read nodes
       while (marker < cur_list_size && frontier.size() < beam_width &&
              num_seen < beam_width) {
-        unsigned pid = retset[marker].id;
+        const unsigned pid = id2page_[retset[marker].id];
         if (page_visited.find(pid) == page_visited.end() && retset[marker].flag) {
           num_seen++;
           // TODO: add different cache strategies
