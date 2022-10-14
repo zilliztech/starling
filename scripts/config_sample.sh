@@ -16,6 +16,8 @@ MEM_R=48
 MEM_BUILD_L=128
 MEM_ALPHA=1.2
 MEM_RAND_SAMPLING_RATE=0.01
+MEM_USE_FREQ=1
+FREQ_USE_RATE=0.01
 
 ##########################
 #   Generate Frequency   #

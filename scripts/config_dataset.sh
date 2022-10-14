@@ -3,16 +3,16 @@
 ###############
 #   SIFT10M   #
 ###############
-BASE_PATH=/data/datasets/sift10M/base10M.fbin
-QUERY_FILE=/data/datasets/sift10M/query.fbin
-GT_FILE=/data/datasets/sift10M/10M-topk1000-gt
-PREFIX=sift_10m
-DATA_TYPE=float
-DIST_FN=l2
-B=0.3
-K=10
-DATA_DIM=128
-DATA_N=10000000
+# BASE_PATH=/data/datasets/sift10M/base10M.fbin
+# QUERY_FILE=/data/datasets/sift10M/query.fbin
+# GT_FILE=/data/datasets/sift10M/10M-topk1000-gt
+# PREFIX=sift_10m
+# DATA_TYPE=float
+# DIST_FN=l2
+# B=0.3
+# K=10
+# DATA_DIM=128
+# DATA_N=10000000
 
 ################
 #   SSNPP10M   #
@@ -27,3 +27,16 @@ DATA_N=10000000
 # RADIUS=96237
 # DATA_DIM=256
 # DATA_N=10000000
+
+#################
+#   BIGANN10M   #
+BASE_PATH=/data/datasets/BIGANN/base.10M.u8bin
+QUERY_FILE=/data/datasets/BIGANN/query.public.10K.128.u8bin
+GT_FILE=/data/datasets/BIGANN/bigann-10M-gt.bin 
+PREFIX=bigann_10m
+DATA_TYPE=uint8
+DIST_FN=l2
+B=0.3
+K=10
+DATA_DIM=128
+DATA_N=10000000

@@ -62,16 +62,26 @@ case $2 in
       -T $BUILD_T > ${INDEX_PREFIX_PATH}build.log
   ;;
   build_mem)
-    check_dir_and_make_if_absent ${MEM_INDEX_PATH}
-    mkdir -p ${MEM_SAMPLE_PATH}
-    # TODO: Add frequency sampling method
-    echo "Generating random slice..."
-    time ${EXE_PATH}/tests/utils/gen_random_slice $DATA_TYPE $BASE_PATH $MEM_SAMPLE_PATH $MEM_RAND_SAMPLING_RATE > ${MEM_SAMPLE_PATH}sample.log
+    if [ ${MEM_USE_FREQ} -eq 1 ]; then
+      if [ ! -d ${FREQ_PATH} ]; then
+        echo "Seems you have not gen the freq file, run this script again: ./run_benchmark.sh [debug/release] freq [knn/range]"
+        exit 1;
+      fi
+      echo "Parsing freq file..."
+      time ${EXE_PATH}/tests/utils/parse_freq_file ${DATA_TYPE} ${BASE_PATH} ${FREQ_PATH}_freq.bin ${FREQ_PATH} ${FREQ_USE_RATE} 
+      MEM_DATA_PATH=${FREQ_PATH}
+    else
+      mkdir -p ${MEM_SAMPLE_PATH}
+      echo "Generating random slice..."
+      time ${EXE_PATH}/tests/utils/gen_random_slice $DATA_TYPE $BASE_PATH $MEM_SAMPLE_PATH $MEM_RAND_SAMPLING_RATE > ${MEM_SAMPLE_PATH}sample.log
+      MEM_DATA_PATH=${MEM_SAMPLE_PATH}
+    fi
     echo "Building memory index..."
+    check_dir_and_make_if_absent ${MEM_INDEX_PATH}
     time ${EXE_PATH}/tests/build_memory_index \
       --data_type ${DATA_TYPE} \
       --dist_fn ${DIST_FN} \
-      --data_path ${MEM_SAMPLE_PATH} \
+      --data_path ${MEM_DATA_PATH} \
       --index_path_prefix ${MEM_INDEX_PATH}_index \
       -R ${MEM_R} \
       -L ${MEM_BUILD_L} \
@@ -101,8 +111,8 @@ case $2 in
               -T $FREQ_T \
               -L $FREQ_L \
               -W $FREQ_BM \
-              --mem_L ${MEM_L} \
-              --mem_topk ${MEM_TOPK} \
+              --mem_L ${FREQ_MEM_L} \
+              --mem_topk ${FREQ_MEM_TOPK} \
               --use_page_search 0 \
               --disk_file_path ${DISK_FILE_PATH} > ${FREQ_LOG}
   ;;
@@ -141,8 +151,11 @@ case $2 in
       fi
       echo "Using Page Search"
     else
-      if [ -f ${DISK_FILE_PATH} ]; then
-        DISK_FILE_PATH=${INDEX_PREFIX_PATH}_disk_beam_search.index
+      OLD_INDEX_FILE=${INDEX_PREFIX_PATH}_disk_beam_search.index
+      if [ -f ${OLD_INDEX_FILE} ]; then
+        DISK_FILE_PATH=$OLD_INDEX_FILE
+      else
+        echo "make sure you have not gp the index file"
       fi
       echo "Using Beam Search"
     fi
