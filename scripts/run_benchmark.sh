@@ -7,9 +7,11 @@ source config_local.sh
 
 INDEX_PREFIX_PATH="${PREFIX}_M${M}_R${R}_L${BUILD_L}_B${B}/"
 MEM_SAMPLE_PATH="${INDEX_PREFIX_PATH}SAMPLE_RATE_${MEM_RAND_SAMPLING_RATE}/"
-MEM_INDEX_PATH="${INDEX_PREFIX_PATH}MEM_R_${MEM_R}_L_${MEM_BUILD_L}_ALPHA_${MEM_ALPHA}/"
+MEM_INDEX_PATH="${INDEX_PREFIX_PATH}MEM_R_${MEM_R}_L_${MEM_BUILD_L}_ALPHA_${MEM_ALPHA}_MEM_USE_FREQ${MEM_USE_FREQ}/"
 GP_PATH="${INDEX_PREFIX_PATH}GP_TIMES_${GP_TIMES}_DESCEND_${GP_DESCEND_TIMES}/"
 FREQ_PATH="${INDEX_PREFIX_PATH}FREQ/NQ_${FREQ_QUERY_CNT}_BM_${FREQ_BM}_L_${FREQ_L}_T_${FREQ_T}/"
+
+SUMMARY_FILE_PATH="../indices/summary.log"
 
 print_usage_and_exit() {
   echo "Usage: ./run_benchmark.sh [debug/release] [build/build_mem/freq/gp/search] [knn/range]"
@@ -68,7 +70,7 @@ case $2 in
         exit 1;
       fi
       echo "Parsing freq file..."
-      time ${EXE_PATH}/tests/utils/parse_freq_file ${DATA_TYPE} ${BASE_PATH} ${FREQ_PATH}_freq.bin ${FREQ_PATH} ${FREQ_USE_RATE} 
+      time ${EXE_PATH}/tests/utils/parse_freq_file ${DATA_TYPE} ${BASE_PATH} ${FREQ_PATH}_freq.bin ${FREQ_PATH} ${MEM_FREQ_USE_RATE} 
       MEM_DATA_PATH=${FREQ_PATH}
     else
       mkdir -p ${MEM_SAMPLE_PATH}
@@ -160,14 +162,14 @@ case $2 in
       echo "Using Beam Search"
     fi
 
+    log_arr=()
     case $3 in
       knn)
-        log_arr=()
         for BW in ${BM_LIST[@]}
         do
           for T in ${T_LIST[@]}
           do
-            SEARCH_LOG=${INDEX_PREFIX_PATH}search_K${K}_CACHE${CACHE}_BW${BW}_T${T}_MEML${MEM_L}_MEMK${MEM_TOPK}_PS${USE_PAGE_SEARCH}_USE_RATIO${PS_USE_RATIO}.log
+            SEARCH_LOG=${INDEX_PREFIX_PATH}search_K${K}_CACHE${CACHE}_BW${BW}_T${T}_MEML${MEM_L}_MEMK${MEM_TOPK}_MEM_USE_FREQ${MEM_USE_FREQ}_PS${USE_PAGE_SEARCH}_USE_RATIO${PS_USE_RATIO}.log
             echo "Searching... log file: ${SEARCH_LOG}"
             sync; echo 3 | sudo tee /proc/sys/vm/drop_caches; ${EXE_PATH}/tests/search_disk_index --data_type $DATA_TYPE \
               --dist_fn $DIST_FN \
@@ -188,11 +190,6 @@ case $2 in
               --disk_file_path ${DISK_FILE_PATH}> ${SEARCH_LOG}
             log_arr+=( ${SEARCH_LOG} )
           done
-        done
-        for f in "${log_arr[@]}"
-        do
-          echo $f
-          cat $f | grep -E "([0-9]+(\.[0-9]+\s+)){5,}"
         done
       ;;
       range)
@@ -225,16 +222,21 @@ case $2 in
             log_arr+=( ${SEARCH_LOG} )
           done
         done
-        for f in "${log_arr[@]}"
-        do
-          echo $f
-          cat $f | grep -E "([0-9]+(\.[0-9]+\s+)){5,}"
-        done
       ;;
       *)
         print_usage_and_exit
       ;;
     esac
+    if [ ${#log_arr[@]} -ge 1 ]; then
+      TITLES=$(cat ${log_arr[0]} | grep -E "^\s+L\s+")
+      for f in "${log_arr[@]}"
+      do
+        printf "$f\n" | tee -a $SUMMARY_FILE_PATH
+        printf "${TITLES}\n" | tee -a $SUMMARY_FILE_PATH
+        cat $f | grep -E "([0-9]+(\.[0-9]+\s+)){5,}" | tee -a $SUMMARY_FILE_PATH
+        printf "\n\n" >> $SUMMARY_FILE_PATH
+      done
+    fi
   ;;
   *)
     print_usage_and_exit

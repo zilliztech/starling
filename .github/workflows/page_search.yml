@@ -1,0 +1,104 @@
+name: DiskANN and Page Search Functionality Tests
+on: [pull_request]
+jobs:
+  build-and-run:
+    name: Run on ${{ matrix.os }} and ${{ matrix.data_type }} dataset
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        os: [ubuntu-20.04] # ubuntu-latest
+        data_type: [float, uint8]
+
+    defaults:
+      run:
+        shell: bash
+        working-directory: scripts
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+      with:
+          submodules: recursive
+
+    - name: Install deps
+      run: |
+        if [ "${{ matrix.os }}" != "ubuntu-18.04" ]; then
+            sudo apt install cmake g++ libaio-dev libgoogle-perftools-dev clang-format libboost-dev libboost-program-options-dev libmkl-full-dev
+        else
+            sudo apt install cmake g++ libaio-dev libgoogle-perftools-dev clang-format libboost-dev libboost-program-options-dev
+            wget https://registrationcenter-download.intel.com/akdlm/irc_nas/18487/l_BaseKit_p_2022.1.2.146.sh
+            sudo sh l_BaseKit_p_2022.1.2.146.sh -a --components intel.oneapi.lin.mkl.devel --action install --eula accept -s
+        fi
+
+    - name: Config Benchmark
+      run: |
+          cp config_ci.sh config_local.sh
+          sed -i 's/\#\ DATASET_PLACEHOLDER/${{ matrix.data_type }}_dataset/' config_local.sh
+    
+    # Float
+    - name: Build Disk Index
+      run: ./run_benchmark.sh release build
+
+    - name: Build Memory Index
+      run: ./run_benchmark.sh release build_mem
+
+    - name: Graph Partition
+      run: ./run_benchmark.sh release gp
+
+    - name: Generate Frequency
+      run: ./run_benchmark.sh release freq
+
+    - name: Beam Search
+      run: ./run_benchmark.sh release search knn
+
+    - name: Beam Search with In-memory Nav Graph
+      run: |
+          echo "MEM_L=5" >> config_local.sh
+          ./run_benchmark.sh release search knn
+          sed -i '$ d' config_local.sh
+    
+    - name: Page Search
+      run: |
+          echo "USE_PAGE_SEARCH=1" >> config_local.sh
+          ./run_benchmark.sh release search knn
+
+    - name: Page Search with In-memory Nav Graph
+      run: |
+          echo "MEM_L=5" >> config_local.sh
+          ./run_benchmark.sh release search knn
+    
+    - name: Page Search with Frequency In-memory Nav Graph
+      run: |
+          echo "MEM_USE_FREQ=1" >> config_local.sh
+          ./run_benchmark.sh release build_mem
+          ./run_benchmark.sh release search knn
+
+    # TODO: Add range search
+
+    # Create comment wih results
+    - id: get-comment-body
+      run: |
+          body="$(cat ../indices/summary.log)"
+          body="${body//'%'/'%25'}"
+          body="${body//$'\n'/'%0A'}"
+          body="${body//$'\r'/'%0D'}" 
+          echo "::set-output name=body::$body"
+
+    - name: Find Comment
+      uses: peter-evans/find-comment@v2
+      id: fc
+      with:
+        issue-number: ${{ github.event.pull_request.number }}
+        comment-author: 'github-actions[bot]'
+        body-includes: Results on ${{ matrix.os }} and ${{ matrix.data_type }} dataset
+
+    - name: Create comment
+      uses: peter-evans/create-or-update-comment@v2
+      with:
+        comment-id: ${{ steps.fc.outputs.comment-id }}
+        issue-number: ${{ github.event.pull_request.number }}
+        body: |
+          Results on ${{ matrix.os }} and ${{ matrix.data_type }} dataset
+          ${{ steps.get-comment-body.outputs.body }}
+        edit-mode: replace

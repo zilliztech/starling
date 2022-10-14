@@ -1,6 +1,12 @@
 #!/bin/sh
 source config_dataset.sh
 
+# Choose the dataset by uncomment the line below
+# If multiple lines are uncommented, only the last dataset is effective
+dataset_sift10M
+#dataset_ssnpp10M
+#dataset_bigann10M
+
 ##################
 #   Disk Build   #
 ##################
@@ -17,7 +23,7 @@ MEM_BUILD_L=128
 MEM_ALPHA=1.2
 MEM_RAND_SAMPLING_RATE=0.01
 MEM_USE_FREQ=1
-FREQ_USE_RATE=0.01
+MEM_FREQ_USE_RATE=0.01
 
 ##########################
 #   Generate Frequency   #
