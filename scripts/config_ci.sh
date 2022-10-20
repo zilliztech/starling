@@ -63,7 +63,9 @@ FREQ_MEM_TOPK=10
 #######################
 GP_TIMES=5
 GP_T=16
-GP_DESCEND_TIMES=0
+GP_USE_FREQ=0
+GP_LOCK_NUMS=0
+GP_CUT=4096 
 
 ##############
 #   Search   #
