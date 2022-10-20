@@ -42,7 +42,9 @@ FREQ_MEM_TOPK=10
 #######################
 GP_TIMES=16
 GP_T=16
-GP_DESCEND_TIMES=0
+GP_LOCK_NUMS=0 #lock nodes at init, this nodes will not do partition
+GP_USE_FREQ=0
+
 
 ##############
 #   Search   #
