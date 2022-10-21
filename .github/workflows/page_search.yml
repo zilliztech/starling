@@ -74,6 +74,21 @@ jobs:
           ./run_benchmark.sh release build_mem
           ./run_benchmark.sh release search knn
 
+    - name: Page Search with Frequency Graph partition
+      run: |
+          echo "MEM_USE_FREQ=0" >> config_local.sh
+          echo "GP_USE_FREQ=1" >> config_local.sh
+          echo "GP_LOCK_NUMS=100" >> config_local.sh
+          echo "GP_CUT=3" >> config_local.sh
+          ./run_benchmark.sh release gp
+          ./run_benchmark.sh release search knn
+
+    - name: Page Search with Frequency Graph Partition and In-memory Nav Graph
+      run: |
+          echo "MEM_USE_FREQ=1" >> config_local.sh
+          ./run_benchmark.sh release search knn
+
+
     # TODO: Add range search
 
     # Create comment wih results
