@@ -102,4 +102,8 @@ case $1 in
         cp ${GP_PATH}_part_tmp.index ${INDEX_PREFIX_PATH}_disk.index
         cp ${GP_PATH}_part.bin ${INDEX_PREFIX_PATH}_partition.bin
     ;;
+    search)
+        echo rm ${INDEX_PREFIX_PATH}search
+        rm ${INDEX_PREFIX_PATH}search/*
+    ;;
 esac

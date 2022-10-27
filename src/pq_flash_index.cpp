@@ -15,6 +15,7 @@
 #include "distance.h"
 #include "exceptions.h"
 #include "parameters.h"
+#include "pq_flash_index_utils.h"
 #include "timer.h"
 #include "utils.h"
 
@@ -174,42 +175,53 @@ namespace diskann {
 
     size_t BLOCK_SIZE = 8;
     size_t num_blocks = DIV_ROUND_UP(num_cached_nodes, BLOCK_SIZE);
-
     for (_u64 block = 0; block < num_blocks; block++) {
       _u64 start_idx = block * BLOCK_SIZE;
       _u64 end_idx = (std::min)(num_cached_nodes, (block + 1) * BLOCK_SIZE);
       std::vector<AlignedRead>             read_reqs;
       std::vector<std::pair<_u32, char *>> nhoods;
       for (_u64 node_idx = start_idx; node_idx < end_idx; node_idx++) {
-        AlignedRead read;
-        char *      buf = nullptr;
+        auto id = node_list[node_idx];
+        std::pair<_u32, char *> fnhood;
+        fnhood.first = id;
+        char* buf = nullptr;
         alloc_aligned((void **) &buf, SECTOR_LEN, SECTOR_LEN);
-        nhoods.push_back(std::make_pair(node_list[node_idx], buf));
-        read.len = SECTOR_LEN;
-        read.buf = buf;
-        read.offset = NODE_SECTOR_NO(node_list[node_idx]) * SECTOR_LEN;
-        read_reqs.push_back(read);
+        fnhood.second = buf;
+        nhoods.push_back(fnhood);
+        if(!id2page_.empty()){
+            read_reqs.emplace_back(
+              (static_cast<_u64>(id2page_[id]+1)) * SECTOR_LEN, SECTOR_LEN,
+              fnhood.second);
+        }else{
+            read_reqs.emplace_back(
+              (static_cast<_u64>(NODE_SECTOR_NO(id))) * SECTOR_LEN, SECTOR_LEN,
+              fnhood.second);
+        }
       }
 
       reader->read(read_reqs, ctx);
 
       _u64 node_idx = start_idx;
-      for (_u32 i = 0; i < read_reqs.size(); i++) {
-#if defined(_WINDOWS) && \
-    defined(USE_BING_INFRA)  // this block is to handle failed reads in
-                             // production settings
-        if ((*ctx.m_pRequestsStatus)[i] != IOContext::READ_SUCCESS) {
-          continue;
+
+      for (auto &nhood : nhoods) {
+        char* node_buf = nullptr;
+        if(!id2page_.empty()){
+          char *sector_buf = nhood.second;
+          unsigned pid = id2page_[nhood.first];
+          for (unsigned j = 0; j < gp_layout_[pid].size(); ++j) {
+            unsigned id = gp_layout_[pid][j];
+            if (id == nhood.first) {
+              node_buf = sector_buf + j * max_node_len;
+            }
+          }
+        }else{
+          node_buf = OFFSET_TO_NODE(nhood.second, nhood.first);
         }
-#endif
-        auto &nhood = nhoods[i];
-        char *node_buf = OFFSET_TO_NODE(nhood.second, nhood.first);
         T *   node_coords = OFFSET_TO_NODE_COORDS(node_buf);
         T *   cached_coords = coord_cache_buf + node_idx * aligned_dim;
         memcpy(cached_coords, node_coords, disk_bytes_per_point);
         coord_cache.insert(std::make_pair(nhood.first, cached_coords));
 
-        // insert node nhood into nhood_cache
         unsigned *node_nhood = OFFSET_TO_NODE_NHOOD(node_buf);
 
         auto                        nnbrs = *node_nhood;
@@ -240,7 +252,7 @@ namespace diskann {
   void PQFlashIndex<T>::generate_cache_list_from_sample_queries(
       std::string sample_bin, _u64 l_search, _u64 beamwidth,
       _u64 num_nodes_to_cache, uint32_t nthreads,
-      std::vector<uint32_t> &node_list) {
+      std::vector<uint32_t> &node_list, bool use_pagesearch) {
 #endif
     this->count_visited_nodes = true;
     init_node_visit_counter();
@@ -268,13 +280,24 @@ namespace diskann {
     std::vector<uint64_t> tmp_result_ids_64(sample_num, 0);
     std::vector<float>    tmp_result_dists(sample_num, 0);
 
+    if(use_pagesearch){
+      
 #pragma omp parallel for schedule(dynamic, 1) num_threads(nthreads)
-    for (_s64 i = 0; i < (int64_t) sample_num; i++) {
-      cached_beam_search(samples + (i * sample_aligned_dim), 1, l_search,
-                         tmp_result_ids_64.data() + (i * 1),
-                         tmp_result_dists.data() + (i * 1), beamwidth);
+      for (_s64 i = 0; i < (int64_t) sample_num; i++) {
+        page_search(
+              samples + (i * sample_aligned_dim), 1, l_search,
+              tmp_result_ids_64.data() + (i * 1),
+              tmp_result_dists.data() + (i * 1),
+              beamwidth, std::numeric_limits<_u32>::max(), false, 1, nullptr);
+      }
+    }else{
+#pragma omp parallel for schedule(dynamic, 1) num_threads(nthreads)
+      for (_s64 i = 0; i < (int64_t) sample_num; i++) {
+        cached_beam_search(samples + (i * sample_aligned_dim), 1, l_search,
+                          tmp_result_ids_64.data() + (i * 1),
+                          tmp_result_dists.data() + (i * 1), beamwidth);
+      }
     }
-
     std::sort(this->node_visit_counter.begin(), node_visit_counter.end(),
               [](std::pair<_u32, _u32> &left, std::pair<_u32, _u32> &right) {
                 return left.second > right.second;
@@ -898,7 +921,7 @@ namespace diskann {
       std::vector<unsigned> mem_tags(mem_topk_);
       std::vector<T*> res = std::vector<T*>();
       mem_index_->search_with_tags(query, mem_topk_, mem_L_, mem_tags.data(), nullptr, res);
-      compute_and_add_to_retset(mem_tags.data(), mem_topk_);
+      compute_and_add_to_retset(mem_tags.data(), std::min((unsigned)mem_topk_, (unsigned)l_search));
     } else {
       compute_and_add_to_retset(&best_medoid, 1);
     }
@@ -948,15 +971,16 @@ namespace diskann {
           }
           retset[marker].flag = false;
           if (this->count_visited_nodes) {
-            reinterpret_cast<std::atomic<_u32> &>(
-                this->node_visit_counter[retset[marker].id].second)
-                .fetch_add(1);
-            if (this->count_visited_nbrs) {
-              unsigned r_id = retset[marker].rev_id;
-              unsigned id = retset[marker].id;
-              if (r_id != id) {
 #pragma omp critical
-                ++(this->nbrs_freq_counter_[r_id][id]);
+            {
+              auto &cnt = this->node_visit_counter[retset[marker].id].second;
+              ++cnt;
+              if (this->count_visited_nbrs) {
+                unsigned r_id = retset[marker].rev_id;
+                unsigned id = retset[marker].id;
+                if (r_id != id) {
+                  ++(this->nbrs_freq_counter_[r_id][id]);
+                }
               }
             }
           }
