@@ -101,7 +101,7 @@ namespace diskann {
     DISKANN_DLLEXPORT void generate_cache_list_from_sample_queries(
         std::string sample_bin, _u64 l_search, _u64 beamwidth,
         _u64 num_nodes_to_cache, uint32_t num_threads,
-        std::vector<uint32_t> &node_list);
+        std::vector<uint32_t> &node_list, bool use_pagesearch);
 #endif
 
     DISKANN_DLLEXPORT void cache_bfs_levels(_u64 num_nodes_to_cache,

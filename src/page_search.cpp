@@ -1,3 +1,5 @@
+#include <cstdlib>
+#include <cstring>
 #include "logger.h"
 #include "percentile_stats.h"
 #include "pq_flash_index.h"
@@ -175,9 +177,10 @@ namespace diskann {
     };
 
     if (mem_L_) {
-      std::vector<unsigned> mem_results(mem_topk_);
-      mem_index_->search(query, mem_topk_, mem_L_, mem_results.data()); // returns <hops, cmps>
-      compute_and_add_to_retset(mem_results.data(), std::min((unsigned)mem_topk_, (unsigned)l_search));
+      std::vector<unsigned> mem_tags(mem_topk_);
+      std::vector<T*> res = std::vector<T*>();
+      mem_index_->search_with_tags(query, mem_topk_, mem_L_, mem_tags.data(), nullptr, res);
+      compute_and_add_to_retset(mem_tags.data(), std::min((unsigned)mem_topk_,(unsigned)l_search));
     } else {
       compute_and_add_to_retset(&best_medoid, 1);
     }
@@ -221,18 +224,17 @@ namespace diskann {
         const unsigned pid = id2page_[retset[marker].id];
         if (page_visited.find(pid) == page_visited.end() && retset[marker].flag) {
           num_seen++;
-          // TODO: add different cache strategies
-          // auto iter = nhood_cache.find(retset[marker].id);
-          // if (iter != nhood_cache.end()) {
-            // cached_nhoods.push_back(
-            //     std::make_pair(retset[marker].id, iter->second));
-            // if (stats != nullptr) {
-            //   stats->n_cache_hits++;
-            // }
-          // } else {
-          frontier.push_back(retset[marker].id);
-          page_visited.insert(pid);
-          // }
+          auto iter = nhood_cache.find(retset[marker].id);
+          if (iter != nhood_cache.end()) {
+            cached_nhoods.push_back(
+                std::make_pair(retset[marker].id, iter->second));
+            if (stats != nullptr) {
+              stats->n_cache_hits++;
+            }
+          } else {
+            frontier.push_back(retset[marker].id);
+            page_visited.insert(pid);
+          }
           retset[marker].flag = false;
         }
         marker++;
@@ -259,6 +261,13 @@ namespace diskann {
           num_ios++;
         }
         n_ops = reader->submit_reqs(frontier_read_reqs, ctx);
+        if (this->count_visited_nodes) {
+#pragma omp critical
+          {
+            auto &cnt = this->node_visit_counter[retset[marker].id].second;
+            ++cnt;
+          }
+        }
       }
 
       // compute remaining nodes in the pages that are fetched in the previous round
@@ -292,61 +301,19 @@ namespace diskann {
       last_io_ids.clear();
 
       // process cached nhoods
-      // TODO: support cache
-      /*
       for (auto &cached_nhood : cached_nhoods) {
+        auto id = cached_nhood.first;
         auto  global_cache_iter = coord_cache.find(cached_nhood.first);
         T *   node_fp_coords_copy = global_cache_iter->second;
-        float cur_expanded_dist;
-        if (!use_disk_index_pq) {
-          cur_expanded_dist = dist_cmp->compare(query, node_fp_coords_copy,
-                                                (unsigned) aligned_dim);
-        } else {
-          if (metric == diskann::Metric::INNER_PRODUCT)
-            cur_expanded_dist = disk_pq_table.inner_product(
-                query_float, (_u8 *) node_fp_coords_copy);
-          else
-            cur_expanded_dist = disk_pq_table.l2_distance(
-                query_float, (_u8 *) node_fp_coords_copy);
-        }
-        full_retset.push_back(
-            Neighbor((unsigned) cached_nhood.first, cur_expanded_dist, true));
-
-        _u64      nnbrs = cached_nhood.second.first;
-        unsigned *node_nbrs = cached_nhood.second.second;
-
-        // compute node_nbrs <-> query dists in PQ space
-        cpu_timer.reset();
-        compute_pq_dists(node_nbrs, nnbrs, dist_scratch);
-        if (stats != nullptr) {
-          stats->n_cmps += (double) nnbrs;
-          stats->cpu_us += (double) cpu_timer.elapsed();
-        }
-
-        // process prefetched nhood
-        for (_u64 m = 0; m < nnbrs; ++m) {
-          unsigned id = node_nbrs[m];
-          if (visited.find(id) != visited.end()) {
-            continue;
-          } else {
-            visited.insert(id);
-            float dist = dist_scratch[m];
-            if (dist >= retset[cur_list_size - 1].distance &&
-                (cur_list_size == l_search))
-              continue;
-            Neighbor nn(id, dist, true);
-            // Return position in sorted list where nn inserted.
-            auto r = InsertIntoPool(retset.data(), cur_list_size, nn);
-            if (cur_list_size < l_search)
-              ++cur_list_size;
-            if (r < nk)
-              // nk logs the best position in the retset that was
-              // updated due to neighbors of n.
-              nk = r;
-          }
-        }
+        unsigned nnr = cached_nhood.second.first;
+        unsigned* cnhood = cached_nhood.second.second;
+        char* node_buf = new char[max_node_len];
+        memcpy(node_buf, node_fp_coords_copy, disk_bytes_per_point);
+        memcpy((node_buf + disk_bytes_per_point), &nnr, sizeof(unsigned));
+        memcpy((node_buf + disk_bytes_per_point + sizeof(unsigned)), cnhood, sizeof(unsigned)*nnr);
+        compute_extact_dists_and_push(node_buf, id);
+        compute_and_push_nbrs(node_buf, nk);
       }
-      */
 
       // get last submitted io results, blocking
       if (!frontier.empty()) {

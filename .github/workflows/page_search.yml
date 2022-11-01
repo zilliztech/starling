@@ -63,6 +63,12 @@ jobs:
           echo "USE_PAGE_SEARCH=1" >> config_local.sh
           ./run_benchmark.sh release search knn
 
+    - name: Page Search With Cache 1000
+      run: |
+          echo "CACHE=1000" >> config_local.sh
+          ./run_benchmark.sh release search knn
+          echo "CACHE=0" >> config_local.sh
+
     - name: Page Search with In-memory Nav Graph
       run: |
           echo "MEM_L=5" >> config_local.sh

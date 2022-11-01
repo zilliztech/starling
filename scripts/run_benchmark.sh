@@ -144,6 +144,8 @@ case $2 in
     cp ${GP_FILE_PATH} ${INDEX_PREFIX_PATH}_partition.bin
   ;;
   search)
+    mkdir -p ${INDEX_PREFIX_PATH}/search
+    mkdir -p ${INDEX_PREFIX_PATH}/result
     if [ ! -d "$INDEX_PREFIX_PATH" ]; then
       echo "Directory $INDEX_PREFIX_PATH is not exist. Build it first?"
       exit 1
@@ -174,7 +176,7 @@ case $2 in
         do
           for T in ${T_LIST[@]}
           do
-            SEARCH_LOG=${INDEX_PREFIX_PATH}search_K${K}_CACHE${CACHE}_BW${BW}_T${T}_MEML${MEM_L}_MEMK${MEM_TOPK}_MEM_USE_FREQ${MEM_USE_FREQ}_PS${USE_PAGE_SEARCH}_USE_RATIO${PS_USE_RATIO}_GP_USE_FREQ{$GP_USE_FREQ}_GP_LOCK_NUMS${GP_LOCK_NUMS}_GP_CUT${GP_CUT}.log
+            SEARCH_LOG=${INDEX_PREFIX_PATH}search/search_K${K}_CACHE${CACHE}_BW${BW}_T${T}_MEML${MEM_L}_MEMK${MEM_TOPK}_MEM_USE_FREQ${MEM_USE_FREQ}_PS${USE_PAGE_SEARCH}_USE_RATIO${PS_USE_RATIO}_GP_USE_FREQ{$GP_USE_FREQ}_GP_LOCK_NUMS${GP_LOCK_NUMS}_GP_CUT${GP_CUT}.log
             echo "Searching... log file: ${SEARCH_LOG}"
             sync; echo 3 | sudo tee /proc/sys/vm/drop_caches; ${EXE_PATH}/tests/search_disk_index --data_type $DATA_TYPE \
               --dist_fn $DIST_FN \
@@ -182,7 +184,7 @@ case $2 in
               --query_file $QUERY_FILE \
               --gt_file $GT_FILE \
               -K $K \
-              --result_path ${INDEX_PREFIX_PATH}result \
+              --result_path ${INDEX_PREFIX_PATH}result/result \
               --num_nodes_to_cache $CACHE \
               -T $T \
               -L ${LS} \
@@ -207,7 +209,7 @@ case $2 in
         do
           for T in ${T_LIST[@]}
           do
-            SEARCH_LOG=${INDEX_PREFIX_PATH}search_RADIUS${RADIUS}_CACHE${CACHE}_BW${BW}_T${T}_MEML${MEM_L}_MEMK${MEM_TOPK}.log
+            SEARCH_LOG=${INDEX_PREFIX_PATH}search/search_RADIUS${RADIUS}_CACHE${CACHE}_BW${BW}_T${T}_MEML${MEM_L}_MEMK${MEM_TOPK}.log
             echo "Searching... log file: ${SEARCH_LOG}"
             sync; echo 3 | sudo tee /proc/sys/vm/drop_caches; ${EXE_PATH}/tests/range_search_disk_index \
               --data_type $DATA_TYPE \
