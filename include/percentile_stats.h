@@ -61,4 +61,38 @@ namespace diskann {
     }
     return avg / len;
   }
+
+  // The following two functions are used when getting statistics while range searching on only queries with
+  // non-zero gt lengths
+  template<typename T>
+  inline T get_percentile_stats_gt(
+      QueryStats *stats, uint64_t len, float percentile,
+      const std::function<T(const QueryStats &)> &member_fn, std::vector<std::vector<uint32_t>> &gt) {
+    std::vector<T> vals;
+    for (uint64_t i = 0; i < len; i++) {
+      if (gt[i].size()) vals.push_back(member_fn(stats[i]));
+    }
+
+    std::sort(vals.begin(), vals.end(),
+              [](const T &left, const T &right) { return left < right; });
+
+    auto retval = vals[(uint64_t)(percentile * vals.size())];
+    vals.clear();
+    return retval;
+  }
+
+  template<typename T>
+  inline double get_mean_stats_gt(
+      QueryStats *stats, uint64_t len,
+      const std::function<T(const QueryStats &)> &member_fn, std::vector<std::vector<uint32_t>> &gt) {
+    uint32_t cnt = 0;
+    double avg = 0;
+    for (uint64_t i = 0; i < len; i++) {
+      if (gt[i].size()) {
+        ++cnt;
+        avg += (double) member_fn(stats[i]);
+      }
+    }
+    return avg / cnt;
+  }
 }  // namespace diskann

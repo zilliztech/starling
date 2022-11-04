@@ -1,5 +1,5 @@
 name: DiskANN and Page Search Functionality Tests
-on: [pull_request]
+on: [pull_request, workflow_dispatch]
 jobs:
   build-and-run:
     name: Run on ${{ matrix.os }} and ${{ matrix.data_type }} dataset

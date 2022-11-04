@@ -59,7 +59,8 @@ int search_disk_index(diskann::Metric&   metric,
                       const unsigned               num_threads,
                       const unsigned               beamwidth,
                       const unsigned               num_nodes_to_cache,
-                      const std::vector<unsigned>& Lvec) {
+                      const std::vector<unsigned>& Lvec,
+                      const bool use_page_search) {
   std::string pq_prefix = index_path_prefix + "_pq";
   std::string disk_index_file = index_path_prefix + "_disk.index";
   std::string warmup_query_file = index_path_prefix + "_sample_data.bin";
@@ -116,7 +117,7 @@ int search_disk_index(diskann::Metric&   metric,
 #endif
 
   std::unique_ptr<diskann::PQFlashIndex<T>> _pFlashIndex(
-      new diskann::PQFlashIndex<T>(reader, metric));
+      new diskann::PQFlashIndex<T>(reader, use_page_search, metric));
 
   int res = _pFlashIndex->load(num_threads, index_path_prefix.c_str(), disk_file_path);
 
@@ -192,7 +193,7 @@ int search_disk_index(diskann::Metric&   metric,
          "==========================================="
       << std::endl;
 
-  std::vector<std::vector<std::vector<uint32_t>>> query_result_ids(Lvec.size());
+  std::vector<std::vector<std::vector<uint64_t>>> query_result_ids(Lvec.size());
 
   uint32_t optimized_beamwidth = 2;
   uint32_t max_list_size = 10000;
@@ -218,9 +219,9 @@ int search_disk_index(diskann::Metric&   metric,
       float search_range = radius_vec[i];
       std::vector<_u64>  indices;
       std::vector<float> distances;
-      _u32               res_count = _pFlashIndex->range_search(
-          query + (i * query_aligned_dim), search_range, L, max_list_size,
-          indices, distances, optimized_beamwidth, stats + i);
+      _u32               res_count = _pFlashIndex->range_search_iter_knn(
+          query + (i * query_aligned_dim), search_range, mem_L, L, max_list_size,
+          indices, distances, optimized_beamwidth, 1.0f, stats + i);
       query_result_ids[test_id][i].reserve(res_count);
       query_result_ids[test_id][i].resize(res_count);
       for (_u32 idx = 0; idx < res_count; idx++)
@@ -286,6 +287,8 @@ int main(int argc, char** argv) {
       query_file, gt_file, disk_file_path;
   unsigned              num_threads, W, num_nodes_to_cache;
   std::vector<unsigned> Lvec;
+  bool use_page_search = true;
+  float use_ratio = 1.0f;
 
   po::options_description desc{"Arguments"};
   try {
@@ -324,6 +327,10 @@ int main(int argc, char** argv) {
         "omp_get_num_procs())");
     desc.add_options()("disk_file_path", po::value<std::string>(&disk_file_path)->required(),
                        "The path of the disk file (_disk.index in the original DiskANN)");
+    desc.add_options()("use_page_search", po::value<bool>(&use_page_search)->default_value(1),
+                       "Use 1 for page search (default), 0 for DiskANN beam search");
+    desc.add_options()("use_ratio", po::value<float>(&use_ratio)->default_value(1.0f),
+                       "The percentage of how many vectors in a page to search each time");
 
     po::variables_map vm;
     po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -362,15 +369,15 @@ int main(int argc, char** argv) {
     if (data_type == std::string("float"))
       return search_disk_index<float>(
           metric, index_path_prefix, query_file, gt_file, disk_file_path, radius_file,
-          num_threads, W, num_nodes_to_cache, Lvec);
+          num_threads, W, num_nodes_to_cache, Lvec, use_page_search);
     else if (data_type == std::string("int8"))
       return search_disk_index<int8_t>(
           metric, index_path_prefix, query_file, gt_file, disk_file_path, radius_file,
-          num_threads, W, num_nodes_to_cache, Lvec);
+          num_threads, W, num_nodes_to_cache, Lvec, use_page_search);
     else if (data_type == std::string("uint8"))
       return search_disk_index<uint8_t>(
           metric, index_path_prefix, query_file, gt_file, disk_file_path, radius_file,
-          num_threads, W, num_nodes_to_cache, Lvec);
+          num_threads, W, num_nodes_to_cache, Lvec, use_page_search);
     else {
       std::cerr << "Unsupported data type. Use float or int8 or uint8"
                 << std::endl;

@@ -68,7 +68,7 @@ namespace diskann {
 
   DISKANN_DLLEXPORT double calculate_range_search_recall(
       unsigned num_queries, std::vector<std::vector<_u32>> &groundtruth,
-      std::vector<std::vector<_u32>> &our_results);
+      std::vector<std::vector<_u64>> &our_results);
 
   DISKANN_DLLEXPORT void read_idmap(const std::string &    fname,
                                     std::vector<unsigned> &ivecs);

@@ -8,7 +8,7 @@ namespace diskann {
         const T *query, const size_t query_aligned_dim, const _u64 k_search,
         const _u64 l_search, _u64 *res_ids,
         float *res_dists, const _u64 beam_width, const _u32 io_limit,
-        const bool use_reorder_data, QueryStats *stats) {
+        const bool use_reorder_data, QueryStats *stats, const _u32 mem_L) {
 
     this->count_visited_nodes = true;
     this->count_visited_nbrs = true;
@@ -24,7 +24,7 @@ namespace diskann {
           query + (i * query_aligned_dim), k_search, l_search,
           res_ids + (i * k_search),
           res_dists + (i * k_search),
-          beam_width, io_limit, use_reorder_data, stats + i);
+          beam_width, io_limit, use_reorder_data, stats + i, mem_L);
     }
     this->count_visited_nbrs = false;
     this->count_visited_nodes = false;

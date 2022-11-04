@@ -261,9 +261,9 @@ namespace diskann {
 
   double calculate_range_search_recall(
       unsigned num_queries, std::vector<std::vector<_u32>> &groundtruth,
-      std::vector<std::vector<_u32>> &our_results) {
+      std::vector<std::vector<_u64>> &our_results) {
     double             total_recall = 0;
-    std::set<unsigned> gt, res;
+    std::set<_u64> gt, res;
 
     for (size_t i = 0; i < num_queries; i++) {
       gt.clear();

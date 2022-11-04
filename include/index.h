@@ -184,7 +184,14 @@ namespace diskann {
     DISKANN_DLLEXPORT size_t search_with_tags(const T *query, const uint64_t K,
                                               const unsigned L, TagT *tags,
                                               float *           distances,
+                                              _u32 *            return_indices,
                                               std::vector<T *> &res_vectors);
+
+    // The function will modify nbrs to contain all the nodes it can reach
+    // after BFS
+    DISKANN_DLLEXPORT void bfs_with_tags(const T* query,
+                                    const double range,
+                                    std::vector<MemNavNeighbor> &nbrs);
 
     // Will fail if tag already in the index
     DISKANN_DLLEXPORT int insert_point(const T *point, const TagT tag);
