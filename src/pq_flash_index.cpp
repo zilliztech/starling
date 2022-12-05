@@ -35,8 +35,8 @@ namespace diskann {
 
   template<typename T>
   PQFlashIndex<T>::PQFlashIndex(std::shared_ptr<AlignedFileReader> &fileReader,
-                                diskann::Metric                     m,
-                                const bool use_page_search)
+                                const bool use_page_search,
+                                diskann::Metric                     m)
       : reader(fileReader), metric(m) {
     if (m == diskann::Metric::COSINE || m == diskann::Metric::INNER_PRODUCT) {
       if (std::is_floating_point<T>::value) {
@@ -252,7 +252,7 @@ namespace diskann {
   void PQFlashIndex<T>::generate_cache_list_from_sample_queries(
       std::string sample_bin, _u64 l_search, _u64 beamwidth,
       _u64 num_nodes_to_cache, uint32_t nthreads,
-      std::vector<uint32_t> &node_list, bool use_pagesearch) {
+      std::vector<uint32_t> &node_list, bool use_pagesearch, const _u32 mem_L) {
 #endif
     this->count_visited_nodes = true;
     init_node_visit_counter();
@@ -285,7 +285,7 @@ namespace diskann {
 #pragma omp parallel for schedule(dynamic, 1) num_threads(nthreads)
       for (_s64 i = 0; i < (int64_t) sample_num; i++) {
         page_search(
-              samples + (i * sample_aligned_dim), 1, l_search,
+              samples + (i * sample_aligned_dim), 1, mem_L, l_search,
               tmp_result_ids_64.data() + (i * 1),
               tmp_result_dists.data() + (i * 1),
               beamwidth, std::numeric_limits<_u32>::max(), false, 1, nullptr);
@@ -295,7 +295,8 @@ namespace diskann {
       for (_s64 i = 0; i < (int64_t) sample_num; i++) {
         cached_beam_search(samples + (i * sample_aligned_dim), 1, l_search,
                           tmp_result_ids_64.data() + (i * 1),
-                          tmp_result_dists.data() + (i * 1), beamwidth);
+                          tmp_result_dists.data() + (i * 1),
+                          beamwidth, false, nullptr, mem_L);
       }
     }
     std::sort(this->node_visit_counter.begin(), node_visit_counter.end(),
@@ -511,16 +512,13 @@ namespace diskann {
   template<typename T>
   void PQFlashIndex<T>::load_mem_index(Metric metric, const size_t query_dim, 
       const std::string& mem_index_path, const _u32 num_threads,
-      const _u32 mem_L, const _u32 mem_topk) {
+      const _u32 mem_L) {
       if (mem_index_path.empty()) {
         diskann::cerr << "mem_index_path is needed" << std::endl;
         exit(1);
       }
       mem_index_ = std::make_unique<diskann::Index<T, uint32_t>>(metric, query_dim, 0, false, true);
       mem_index_->load(mem_index_path.c_str(), num_threads, mem_L);
-
-      this->mem_L_ = mem_L;
-      this->mem_topk_ = mem_topk;
   }
 
 #ifdef EXEC_ENV_OLS
@@ -812,17 +810,18 @@ namespace diskann {
                                            float *     distances,
                                            const _u64  beam_width,
                                            const bool  use_reorder_data,
-                                           QueryStats *stats) {
+                                           QueryStats *stats,
+                                           const _u32 mem_L) {
     cached_beam_search(query1, k_search, l_search, indices, distances,
                        beam_width, std::numeric_limits<_u32>::max(),
-                       use_reorder_data, stats);
+                       use_reorder_data, stats, mem_L);
   }
 
   template<typename T>
   void PQFlashIndex<T>::cached_beam_search(
       const T *query1, const _u64 k_search, const _u64 l_search, _u64 *indices,
       float *distances, const _u64 beam_width, const _u32 io_limit,
-      const bool use_reorder_data, QueryStats *stats) {
+      const bool use_reorder_data, QueryStats *stats, const _u32 mem_L) {
     ThreadData<T> data = this->thread_data.pop();
     while (data.scratch.sector_scratch == nullptr) {
       this->thread_data.wait_for_push_notify();
@@ -917,11 +916,11 @@ namespace diskann {
       }
     };
 
-    if (mem_L_) {
-      std::vector<unsigned> mem_tags(mem_topk_);
+    if (mem_L) {
+      std::vector<unsigned> mem_tags(mem_L);
       std::vector<T*> res = std::vector<T*>();
-      mem_index_->search_with_tags(query, mem_topk_, mem_L_, mem_tags.data(), nullptr, res);
-      compute_and_add_to_retset(mem_tags.data(), std::min((unsigned)mem_topk_, (unsigned)l_search));
+      mem_index_->search_with_tags(query, mem_L, mem_L, mem_tags.data(), nullptr, nullptr, res);
+      compute_and_add_to_retset(mem_tags.data(), std::min((unsigned)mem_L, (unsigned)l_search));
     } else {
       compute_and_add_to_retset(&best_medoid, 1);
     }
@@ -1247,68 +1246,6 @@ namespace diskann {
       stats->total_us = (double) query_timer.elapsed();
     }
   }
-
-  // range search returns results of all neighbors within distance of range.
-  // indices and distances need to be pre-allocated of size l_search and the
-  // return value is the number of matching hits.
-  template<typename T>
-  _u32 PQFlashIndex<T>::range_search(const T *query1, const double range,
-                                     const _u64          min_l_search,
-                                     const _u64          max_l_search,
-                                     std::vector<_u64> & indices,
-                                     std::vector<float> &distances,
-                                     const _u64          min_beam_width,
-                                     QueryStats *        stats) {
-    _u32 res_count = 0;
-
-    bool stop_flag = false;
-
-    _u32 l_search = min_l_search;  // starting size of the candidate list
-    while (!stop_flag) {
-      indices.resize(l_search);
-      distances.resize(l_search);
-      _u64 cur_bw =
-          min_beam_width > (l_search / 5) ? min_beam_width : l_search / 5;
-      cur_bw = (cur_bw > 100) ? 100 : cur_bw;
-      for (auto &x : distances)
-        x = std::numeric_limits<float>::max();
-      this->cached_beam_search(query1, l_search, l_search, indices.data(),
-                               distances.data(), cur_bw, false, stats);
-      for (_u32 i = 0; i < l_search; i++) {
-        if (distances[i] > (float) range) {
-          res_count = i;
-          break;
-        } else if (i == l_search - 1)
-          res_count = l_search;
-      }
-      if (res_count < (_u32)(l_search / 2.0))
-        stop_flag = true;
-      l_search = l_search * 2;
-      if (l_search > max_l_search)
-        stop_flag = true;
-    }
-    indices.resize(res_count);
-    distances.resize(res_count);
-    return res_count;
-  }
-
-#ifdef EXEC_ENV_OLS
-  template<typename T>
-  char *PQFlashIndex<T>::getHeaderBytes() {
-    IOContext & ctx = reader->get_ctx();
-    AlignedRead readReq;
-    readReq.buf = new char[PQFlashIndex<T>::HEADER_SIZE];
-    readReq.len = PQFlashIndex<T>::HEADER_SIZE;
-    readReq.offset = 0;
-
-    std::vector<AlignedRead> readReqs;
-    readReqs.push_back(readReq);
-
-    reader->read(readReqs, ctx, false);
-
-    return (char *) readReq.buf;
-  }
-#endif
 
   // instantiations
   template class PQFlashIndex<_u8>;

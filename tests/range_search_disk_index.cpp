@@ -58,7 +58,12 @@ int search_disk_index(diskann::Metric&   metric,
                       const unsigned               beamwidth,
                       const unsigned               num_nodes_to_cache,
                       const std::vector<unsigned>& Lvec,
-                      const _u32 mem_topk, const _u32 mem_L) {
+                      const _u32 mem_L,
+                      const unsigned kicked_size,
+                      const unsigned custom_round_num,
+                      const bool iter_knn_to_range_search,
+                      const bool use_page_search,
+                      const float use_ratio = 1.0f) {
   std::string pq_prefix = index_path_prefix + "_pq";
   std::string disk_index_file = index_path_prefix + "_disk.index";
   std::string warmup_query_file = index_path_prefix + "_sample_data.bin";
@@ -104,7 +109,7 @@ int search_disk_index(diskann::Metric&   metric,
 #endif
 
   std::unique_ptr<diskann::PQFlashIndex<T>> _pFlashIndex(
-      new diskann::PQFlashIndex<T>(reader, metric));
+      new diskann::PQFlashIndex<T>(reader, use_page_search, metric));
 
   int res = _pFlashIndex->load(num_threads, index_path_prefix.c_str(), disk_file_path);
 
@@ -114,7 +119,7 @@ int search_disk_index(diskann::Metric&   metric,
 
   // load in-memory navigation graph
   if (mem_L) {
-    _pFlashIndex->load_mem_index(metric, query_aligned_dim, mem_index_path, num_threads, mem_L, mem_topk);
+    _pFlashIndex->load_mem_index(metric, query_aligned_dim, mem_index_path, num_threads, mem_L);
   }
 
   // cache bfs levels
@@ -173,10 +178,12 @@ int search_disk_index(diskann::Metric&   metric,
   diskann::cout.precision(2);
 
   std::string recall_string = "Recall@rng=" + std::to_string(search_range);
-  diskann::cout << std::setw(6) << "L" << std::setw(12) << "Beamwidth"
+  diskann::cout << std::setw(6) << "L" << std::setw(10) << "MEM_L"
+                << std::setw(12) << "Kicked Size"
+                << std::setw(12) << "Beamwidth"
                 << std::setw(16) << "QPS" << std::setw(16) << "Mean Latency"
                 << std::setw(16) << "99.9 Latency" << std::setw(16)
-                << "Mean IOs" << std::setw(16) << "CPU (s)";
+                << "Mean IOs" << std::setw(16) << "CPU";
   if (calc_recall_flag) {
     diskann::cout << std::setw(16) << recall_string << std::endl;
   } else
@@ -186,7 +193,7 @@ int search_disk_index(diskann::Metric&   metric,
          "==========================================="
       << std::endl;
 
-  std::vector<std::vector<std::vector<uint32_t>>> query_result_ids(Lvec.size());
+  std::vector<std::vector<std::vector<uint64_t>>> query_result_ids(Lvec.size());
 
   uint32_t optimized_beamwidth = 2;
   uint32_t max_list_size = 10000;
@@ -207,17 +214,62 @@ int search_disk_index(diskann::Metric&   metric,
     diskann::QueryStats* stats = new diskann::QueryStats[query_num];
 
     auto s = std::chrono::high_resolution_clock::now();
+    // whether use iterative knn strategy to do range search
+    // range_search_iter_knn() checks use_page_search_ 
+    // to switch between knn methods
+    if (iter_knn_to_range_search) {
+      if (kicked_size) {
+        if (mem_L <= 0) {
+          diskann::cerr << "MEM_L should be greater than 0" << std::endl;
+          return -1;
+        }
+
+        std::cout << "Iterative KNN page search using intermediate states" << std::endl;
 #pragma omp parallel for schedule(dynamic, 1)
-    for (_s64 i = 0; i < (int64_t) query_num; i++) {
-      std::vector<_u64>  indices;
-      std::vector<float> distances;
-      _u32               res_count = _pFlashIndex->range_search(
-          query + (i * query_aligned_dim), search_range, L, max_list_size,
-          indices, distances, optimized_beamwidth, stats + i);
-      query_result_ids[test_id][i].reserve(res_count);
-      query_result_ids[test_id][i].resize(res_count);
-      for (_u32 idx = 0; idx < res_count; idx++)
-        query_result_ids[test_id][i][idx] = indices[idx];
+        for (_s64 i = 0; i < (int64_t) query_num; i++) {
+          std::vector<float> distances;
+          std::vector<unsigned> mem_tags;
+          std::vector<float> mem_dis;
+          _pFlashIndex->custom_range_search_iter_page_search(
+              query + (i * query_aligned_dim), search_range, mem_L, mem_tags, mem_dis, L, max_list_size,
+              query_result_ids[test_id][i], distances, optimized_beamwidth, use_ratio,
+              kicked_size,
+              stats + i);
+        }
+      } else {
+        std::cout << "Iterative KNN search use_page_search: " << use_page_search << std::endl;
+#pragma omp parallel for schedule(dynamic, 1)
+        for (_s64 i = 0; i < (int64_t) query_num; i++) {
+          std::vector<float> distances;
+          _pFlashIndex->range_search_iter_knn(
+              query + (i * query_aligned_dim), search_range, mem_L, L, max_list_size,
+              query_result_ids[test_id][i], distances, optimized_beamwidth, use_ratio,
+              stats + i);
+        }
+      }
+    } else {
+      if (mem_L <= 0) {
+        diskann::cerr << "Custom range search needs in-memory navigation graph, set mem_L larger than 0" << std::endl;
+        return -1;
+      }
+      if (!use_page_search) {
+        diskann::cerr << "Custom range search needs use_page_search set to 1" << std::endl;
+        return -1;
+      }
+      if (kicked_size <= 0) {
+        diskann::cerr << "Kicked size should be non-zero" << std::endl;
+        return -1;
+      }
+      std::cout << "Use custom range search" << std::endl;
+
+#pragma omp parallel for schedule(dynamic, 1)
+      for (_s64 i = 0; i < (int64_t) query_num; i++) {
+        std::vector<float> distances;
+        _pFlashIndex->custom_range_search(
+            query + (i * query_aligned_dim), search_range, mem_L, L, max_list_size,
+            query_result_ids[test_id][i], distances, optimized_beamwidth,
+            use_ratio, kicked_size, custom_round_num, stats + i);
+      }
     }
     auto                          e = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> diff = e - s;
@@ -235,7 +287,7 @@ int search_disk_index(diskann::Metric&   metric,
         stats, query_num,
         [](const diskann::QueryStats& stats) { return stats.n_ios; });
 
-    float mean_cpuus = diskann::get_mean_stats<float>(
+    float mean_cpus = diskann::get_mean_stats<float>(
         stats, query_num,
         [](const diskann::QueryStats& stats) { return stats.cpu_us; });
 
@@ -255,10 +307,12 @@ int search_disk_index(diskann::Metric&   metric,
       ratio_of_sums = (1.0 * total_true_positive) / (1.0 * total_positive);
     }
 
-    diskann::cout << std::setw(6) << L << std::setw(12) << optimized_beamwidth
+    diskann::cout << std::setw(6) << L << std::setw(10) << mem_L
+                  << std::setw(12) << kicked_size
+                  << std::setw(12) << optimized_beamwidth
                   << std::setw(16) << qps << std::setw(16) << mean_latency
                   << std::setw(16) << latency_999 << std::setw(16) << mean_ios
-                  << std::setw(16) << mean_cpuus;
+                  << std::setw(16) << mean_cpus;
     if (calc_recall_flag) {
       diskann::cout << std::setw(16) << recall << "," << ratio_of_sums
                     << std::endl;
@@ -278,9 +332,11 @@ int main(int argc, char** argv) {
   std::string data_type, dist_fn, index_path_prefix, result_path_prefix,
       query_file, gt_file, disk_file_path, mem_index_path;
   unsigned              num_threads, W, num_nodes_to_cache;
-  unsigned              mem_topk, mem_L;
+  unsigned              mem_L, kicked_size, custom_round_num;
   std::vector<unsigned> Lvec;
   float                 range;
+  bool                  use_page_search = true, iter_knn_to_range_search = true;
+  float use_ratio = 1.0f;
 
   po::options_description desc{"Arguments"};
   try {
@@ -319,12 +375,21 @@ int main(int argc, char** argv) {
         "omp_get_num_procs())");
     desc.add_options()("mem_L", po::value<unsigned>(&mem_L)->default_value(0),
                        "The L of the in-memory navigation graph while searching. Use 0 to disable");
-    desc.add_options()("mem_topk", po::value<unsigned>(&mem_topk)->default_value(0),
-                       "The TopK of the in-memory navigation graph.");
+    desc.add_options()("kicked_size",
+                       po::value<unsigned>(&kicked_size)->default_value(100),
+                       "The fixed lengths of the vector containing kicked element. Use 0 to not reuse intermediate states");
+    desc.add_options()("custom_round_num", po::value<unsigned>(&custom_round_num)->default_value(0),
+                       "The number of rounds (hops) executed in custom range search. Use 0 to search all");
     desc.add_options()("disk_file_path", po::value<std::string>(&disk_file_path)->required(),
                        "The path of the disk file (_disk.index in the original DiskANN)");
     desc.add_options()("mem_index_path", po::value<std::string>(&mem_index_path)->default_value(""),
                        "The prefix path of the mem_index");
+    desc.add_options()("use_page_search", po::value<bool>(&use_page_search)->required(),
+                       "Use 1 for page search (default), 0 for DiskANN beam search");
+    desc.add_options()("iter_knn_to_range_search", po::value<bool>(&iter_knn_to_range_search)->required(),
+                       "Use 1 for iterating knn method to range search (default), 0 for custom range search");
+    desc.add_options()("use_ratio", po::value<float>(&use_ratio)->default_value(1.0f),
+                       "The percentage of how many vectors in a page to search each time");
 
     po::variables_map vm;
     po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -352,10 +417,6 @@ int main(int argc, char** argv) {
     return -1;
   }
 
-  if (!validate_mem_index_params(mem_topk, mem_L)) {
-    return -1;
-  }
-
   if ((data_type != std::string("float")) &&
       (metric == diskann::Metric::INNER_PRODUCT)) {
     std::cout << "Currently support only floating point data for Inner Product."
@@ -367,15 +428,24 @@ int main(int argc, char** argv) {
     if (data_type == std::string("float"))
       return search_disk_index<float>(metric, index_path_prefix, mem_index_path, query_file,
                                       gt_file, disk_file_path, num_threads, range, W,
-                                      num_nodes_to_cache, Lvec, mem_topk, mem_L);
+                                      num_nodes_to_cache, Lvec, mem_L,
+                                      kicked_size, custom_round_num,
+                                      iter_knn_to_range_search, use_page_search,
+                                      use_ratio);
     else if (data_type == std::string("int8"))
       return search_disk_index<int8_t>(metric, index_path_prefix, mem_index_path, query_file,
                                        gt_file, disk_file_path, num_threads, range, W,
-                                       num_nodes_to_cache, Lvec, mem_topk, mem_L);
+                                       num_nodes_to_cache, Lvec, mem_L,
+                                       kicked_size, custom_round_num,
+                                       iter_knn_to_range_search, use_page_search,
+                                       use_ratio);
     else if (data_type == std::string("uint8"))
       return search_disk_index<uint8_t>(metric, index_path_prefix, mem_index_path, query_file,
                                         gt_file, disk_file_path, num_threads, range, W,
-                                        num_nodes_to_cache, Lvec, mem_topk, mem_L);
+                                        num_nodes_to_cache, Lvec, mem_L,
+                                        kicked_size, custom_round_num,
+                                        iter_knn_to_range_search, use_page_search,
+                                        use_ratio);
     else {
       std::cerr << "Unsupported data type. Use float or int8 or uint8"
                 << std::endl;

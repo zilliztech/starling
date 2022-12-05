@@ -106,7 +106,7 @@ int search_memory_index(diskann::Metric& metric, const std::string& index_path,
       auto qs = std::chrono::high_resolution_clock::now();
       cmp_stats[i] = index.search_with_tags(
           query + i * query_aligned_dim, recall_at, L,
-          query_result_tags + i * recall_at, nullptr, res);
+          query_result_tags + i * recall_at, nullptr, nullptr, res);
 
       auto qe = std::chrono::high_resolution_clock::now();
       std::chrono::duration<double> diff = qe - qs;

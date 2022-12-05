@@ -7,7 +7,7 @@ source config_local.sh
 
 INDEX_PREFIX_PATH="${PREFIX}_M${M}_R${R}_L${BUILD_L}_B${B}/"
 MEM_SAMPLE_PATH="${INDEX_PREFIX_PATH}SAMPLE_RATE_${MEM_RAND_SAMPLING_RATE}/"
-MEM_INDEX_PATH="${INDEX_PREFIX_PATH}MEM_R_${MEM_R}_L_${MEM_BUILD_L}_ALPHA_${MEM_ALPHA}_MEM_USE_FREQ${MEM_USE_FREQ}/"
+MEM_INDEX_PATH="${INDEX_PREFIX_PATH}MEM_R_${MEM_R}_L_${MEM_BUILD_L}_ALPHA_${MEM_ALPHA}_MEM_USE_FREQ${MEM_USE_FREQ}_RANDOM_RATE${MEM_RAND_SAMPLING_RATE}_FREQ_RATE${MEM_FREQ_USE_RATE}/"
 GP_PATH="${INDEX_PREFIX_PATH}GP_TIMES_${GP_TIMES}_LOCK_${GP_LOCK_NUMS}_GP_USE_FREQ${GP_USE_FREQ}_CUT${GP_CUT}/"
 FREQ_PATH="${INDEX_PREFIX_PATH}FREQ/NQ_${FREQ_QUERY_CNT}_BM_${FREQ_BM}_L_${FREQ_L}_T_${FREQ_T}/"
 
@@ -114,7 +114,6 @@ case $2 in
               -L $FREQ_L \
               -W $FREQ_BM \
               --mem_L ${FREQ_MEM_L} \
-              --mem_topk ${FREQ_MEM_TOPK} \
               --use_page_search 0 \
               --disk_file_path ${DISK_FILE_PATH} > ${FREQ_LOG}
   ;;
@@ -190,7 +189,6 @@ case $2 in
               -L ${LS} \
               -W $BW \
               --mem_L ${MEM_L} \
-              --mem_topk ${MEM_TOPK} \
               --mem_index_path ${MEM_INDEX_PATH}_index \
               --use_page_search ${USE_PAGE_SEARCH} \
               --use_ratio ${PS_USE_RATIO} \
@@ -200,16 +198,11 @@ case $2 in
         done
       ;;
       range)
-        # TODO: Range search needs to be modified
-        echo "Support only KNN for now"
-        exit 0
-
-        log_arr=()
         for BW in ${BM_LIST[@]}
         do
           for T in ${T_LIST[@]}
           do
-            SEARCH_LOG=${INDEX_PREFIX_PATH}search/search_RADIUS${RADIUS}_CACHE${CACHE}_BW${BW}_T${T}_MEML${MEM_L}_MEMK${MEM_TOPK}.log
+            SEARCH_LOG=${INDEX_PREFIX_PATH}search/search_RADIUS${RADIUS}_CACHE${CACHE}_BW${BW}_T${T}_PS${USE_PAGE_SEARCH}_PS_RATIO${PS_USE_RATIO}_ITER_KNN${RS_ITER_KNN_TO_RANGE_SEARCH}_MEM_L${MEM_L}.log
             echo "Searching... log file: ${SEARCH_LOG}"
             sync; echo 3 | sudo tee /proc/sys/vm/drop_caches; ${EXE_PATH}/tests/range_search_disk_index \
               --data_type $DATA_TYPE \
@@ -222,9 +215,14 @@ case $2 in
               --gt_file $GT_FILE \
               --range_threshold $RADIUS \
               -L $RS_LS \
-              --mem_L ${MEM_L} \
-              --mem_topk ${MEM_TOPK} \
+              --disk_file_path ${DISK_FILE_PATH} \
+              --use_page_search ${USE_PAGE_SEARCH} \
+              --iter_knn_to_range_search ${RS_ITER_KNN_TO_RANGE_SEARCH} \
+              --use_ratio ${PS_USE_RATIO} \
               --mem_index_path ${MEM_INDEX_PATH}_index \
+              --mem_L ${MEM_L} \
+              --custom_round_num ${RS_CUSTOM_ROUND} \
+              --kicked_size ${KICKED_SIZE} \
               > ${SEARCH_LOG}
             log_arr+=( ${SEARCH_LOG} )
           done

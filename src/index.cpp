@@ -1885,9 +1885,43 @@ namespace diskann {
   }
 
   template<typename T, typename TagT>
+  void Index<T, TagT>::bfs_with_tags(const T* query, const double range, std::vector<MemNavNeighbor> &nbrs) {
+    std::queue<_u32> q;
+    TagT tag;
+    // TODO: maybe use scratch? since mem index is small, allocate new for now
+    tsl::robin_set<_u32> visited;
+    
+    for (const auto nn : nbrs) {
+      q.push(nn.id);
+      visited.insert(nn.id);
+    }
+
+    while (!q.empty()) {
+      _u32 cur = q.front();
+      q.pop();
+      for (size_t m = 0; m < _final_graph[cur].size(); ++m) {
+        const auto id = _final_graph[cur][m];
+        if (visited.find(id) == visited.end()) {
+          visited.insert(id);
+          float dist = _distance->compare(query, _data + _aligned_dim * (size_t)id, (unsigned)_aligned_dim);
+          if (dist <= range) {
+            q.push(id);
+            if (_location_to_tag.try_get(id, tag)) {
+              nbrs.emplace_back(id, dist, tag);
+            } else {
+              diskann::cerr << "Unable to find related tag for id " << id << std::endl;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  template<typename T, typename TagT>
   size_t Index<T, TagT>::search_with_tags(const T *query, const uint64_t K,
                                           const unsigned L, TagT *tags,
                                           float *           distances,
+                                          _u32 *            return_indices,
                                           std::vector<T *> &res_vectors) {
     ScratchStoreManager<T> manager(_query_scratch);
     auto                   scratch = manager.scratch_space();
@@ -1925,6 +1959,11 @@ namespace diskann {
                                                          : dist_interim[i];
 #endif
         }
+
+        if (return_indices != nullptr) {
+          return_indices[pos] = indices[i];
+        }
+
         pos++;
         // If res_vectors.size() < k, clip at the value.
         if (pos == K || pos == res_vectors.size())

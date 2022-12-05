@@ -33,7 +33,7 @@ For building, modify `MEM_R`, `MEM_BUILD_L`, `MEM_ALPHA`, `MEM_RAND_SAMPLING_RAT
 ./run_benchmark.sh [debug/release] build_mem
 ```
 
-For searching, modify `mem_L` and `mem_topk` to enable
+For searching, modify `mem_L` to enable
 ```bash
 ./run_benchmark.sh [debug/release] search [knn/range]
 ```

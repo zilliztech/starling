@@ -72,7 +72,7 @@ add_executable(parse_freq_file parse_freq_file.cpp)
 target_link_libraries(parse_freq_file ${PROJECT_NAME})
 
 # formatter
-if (LINUX)
-	add_custom_command(TARGET gen_random_slice PRE_BUILD COMMAND clang-format -i ../../../include/*.h ../../../include/dll/*.h ../../../src/*.cpp  ../../../tests/*.cpp ../../../src/dll/*.cpp ../../../tests/utils/*.cpp)
-endif()
+# if (LINUX)
+# 	add_custom_command(TARGET gen_random_slice PRE_BUILD COMMAND clang-format -i ../../../include/*.h ../../../include/dll/*.h ../../../src/*.cpp  ../../../tests/*.cpp ../../../src/dll/*.cpp ../../../tests/utils/*.cpp)
+# endif()
 

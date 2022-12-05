@@ -13,7 +13,7 @@ dataset_sift10M
 R=48
 BUILD_L=128
 M=32
-BUILD_T=64
+BUILD_T=8
 
 ##################################
 #   In-Memory Navigation Graph   #
@@ -22,7 +22,7 @@ MEM_R=48
 MEM_BUILD_L=128
 MEM_ALPHA=1.2
 MEM_RAND_SAMPLING_RATE=0.01
-MEM_USE_FREQ=1
+MEM_USE_FREQ=0
 MEM_FREQ_USE_RATE=0.01
 
 ##########################
@@ -51,10 +51,9 @@ GP_CUT=4096 # the graph's degree will been limited at 4096
 #   Search   #
 ##############
 BM_LIST=(4)
-T_LIST=(16)
+T_LIST=(8)
 CACHE=0
 MEM_L=0 # non-zero to enable
-MEM_TOPK=10
 
 # Page Search
 USE_PAGE_SEARCH=1 # Set 0 for beam search, 1 for page search (default)
@@ -64,4 +63,7 @@ PS_USE_RATIO=1.0
 LS="100 120"
 
 # Range search
-RS_LS="80 100"
+RS_LS="80"
+RS_ITER_KNN_TO_RANGE_SEARCH=1 # 0 for custom search, 1 for iterating via KNN, combine with USE_PAGE_SEARCH
+KICKED_SIZE=300 # non-zero to reuse intermediate states during page search
+RS_CUSTOM_ROUND=0 # set when use custom search, 0 for all pages within radius
