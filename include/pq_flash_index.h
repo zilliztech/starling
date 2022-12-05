@@ -140,12 +140,6 @@ namespace diskann {
         float *res_dists, const _u64 beam_width, const _u32 io_limit,
         const bool use_reorder_data = false, const float use_ratio = 1.0f, QueryStats *stats = nullptr);
 
-    DISKANN_DLLEXPORT void page_search_interim(
-      const T *query1, const _u64 k_search, const _u32 mem_L, const _u64 l_search, _u64 *indices,
-      float *distances, const _u64 beam_width, const _u32 io_limit,
-      const bool use_reorder_data = false, const float use_ratio = 1.0f, QueryStats *stats = nullptr,
-      PageSearchPersistData<T>* persist_data = nullptr);
-
     DISKANN_DLLEXPORT _u32 range_search_iter_knn(const T *query1, const double range,
                                         const _u32          mem_L,
                                         const _u64          min_l_search,
@@ -285,6 +279,12 @@ namespace diskann {
     std::vector<std::unordered_map<_u32, _u32>> nbrs_freq_counter_;
 
     void init_node_visit_counter();
+
+    void page_search_interim(
+      const _u64 k_search, const _u32 mem_L, const _u64 l_search, _u64 *indices,
+      float *distances, const _u64 beam_width, const _u32 io_limit,
+      const bool use_reorder_data = false, const float use_ratio = 1.0f, QueryStats *stats = nullptr,
+      PageSearchPersistData<T>* persist_data = nullptr);
 
 #ifdef EXEC_ENV_OLS
     // Set to a larger value than the actual header to accommodate

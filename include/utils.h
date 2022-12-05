@@ -45,6 +45,8 @@ typedef int FileHandle;
 #include "memory_mapped_files.h"
 #endif
 
+#include <sys/resource.h>
+
 // taken from
 // https://github.com/Microsoft/BLAS-on-flash/blob/master/include/utils.h
 // round up X to the nearest multiple of Y
@@ -581,7 +583,9 @@ namespace diskann {
 #ifdef _WINDOWS
       strerror_s(buff, 1024, errno);
 #else
-      strerror_r(errno, buff, 1024);
+      if (strerror_r(errno, buff, 1024)) {
+        diskann::cerr << "strerror_r() failed" << std::endl;
+      }
 #endif
       diskann::cerr << std::string("Failed to open file") + filename +
                            " for write because " + buff
@@ -1004,6 +1008,25 @@ getMemoryUsage() {  // for non-windows, we have not implemented this function
 }
 
 #endif
+
+inline size_t getProcessPeakRSS() {
+  struct rusage rusage;
+  getrusage(RUSAGE_SELF, &rusage);
+  return (size_t) rusage.ru_maxrss /1024L;
+}
+
+inline size_t getCurrentRSS() {
+  long rss = 0L;
+  FILE *fp = NULL;
+  if ((fp = fopen("/proc/self/statm", "r")) == NULL)
+      return (size_t) 0L;      /* Can't open? */
+  if (fscanf(fp, "%*s%ld", &rss) != 1) {
+      fclose(fp);
+      return (size_t) 0L;      /* Can't read? */
+  }
+  fclose(fp);
+  return (size_t) (rss * (size_t) sysconf(_SC_PAGESIZE))/1024/1024L;
+}
 
 extern bool AvxSupportedCPU;
 extern bool Avx2SupportedCPU;

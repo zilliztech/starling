@@ -388,7 +388,7 @@ namespace diskann {
 
   template<typename T>
   void PQFlashIndex<T>::page_search_interim(
-      const T *query1, const _u64 k_search, const _u32 mem_L, const _u64 l_search, _u64 *indices,
+      const _u64 k_search, const _u32 mem_L, const _u64 l_search, _u64 *indices,
       float *distances, const _u64 beam_width, const _u32 io_limit,
       const bool use_reorder_data, const float use_ratio, QueryStats *stats, PageSearchPersistData<T>* persist_data) {
 
@@ -407,7 +407,6 @@ namespace diskann {
     T *data_buf = query_scratch->coord_scratch;
     _mm_prefetch((char *) data_buf, _MM_HINT_T1);
     const T *query = data.scratch.aligned_query_T;
-    const float *query_float = data.scratch.aligned_query_float;
     IOContext &ctx = data.ctx;
 
     char *sector_scratch = query_scratch->sector_scratch;

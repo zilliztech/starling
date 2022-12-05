@@ -117,6 +117,8 @@ int search_disk_index(
     return res;
   }
 
+  size_t load_mem = getCurrentRSS();
+
   // load in-memory navigation graph
   if (mem_L) {
     _pFlashIndex->load_mem_index(metric, query_dim, mem_index_path, num_threads, mem_L);
@@ -133,6 +135,8 @@ int search_disk_index(
   _pFlashIndex->load_cache_list(node_list);
   node_list.clear();
   node_list.shrink_to_fit();
+
+  size_t cache_mem = getCurrentRSS();
 
   omp_set_num_threads(num_threads);
 
@@ -182,7 +186,10 @@ int search_disk_index(
   diskann::cout << std::setw(6) << "L" << std::setw(12) << "Beamwidth"
                 << std::setw(16) << "QPS" << std::setw(16) << "Mean Latency"
                 << std::setw(16) << "99.9 Latency" << std::setw(16)
-                << "Mean IOs" << std::setw(16) << "CPU (s)";
+                << "Mean IOs" << std::setw(16) << "CPU (s)"
+                << std::setw(20) << "B4 Load In-Mem"
+                << std::setw(20) << "After Load Cache"
+                << std::setw(15) << "Peak Mem(MB)";
   if (calc_recall_flag) {
     diskann::cout << std::setw(16) << recall_string << std::endl;
   } else
@@ -263,7 +270,7 @@ int search_disk_index(
         stats, query_num,
         [](const diskann::QueryStats& stats) { return stats.n_ios; });
 
-    auto mean_cpuus = diskann::get_mean_stats<float>(
+    auto mean_cpus = diskann::get_mean_stats<float>(
         stats, query_num,
         [](const diskann::QueryStats& stats) { return stats.cpu_us; });
 
@@ -277,7 +284,10 @@ int search_disk_index(
     diskann::cout << std::setw(6) << L << std::setw(12) << optimized_beamwidth
                   << std::setw(16) << qps << std::setw(16) << mean_latency
                   << std::setw(16) << latency_999 << std::setw(16) << mean_ios
-                  << std::setw(16) << mean_cpuus;
+                  << std::setw(16) << mean_cpus
+                  << std::setw(20) << load_mem
+                  << std::setw(20) << cache_mem
+                  << std::setw(15) << getProcessPeakRSS();
     if (calc_recall_flag) {
       diskann::cout << std::setw(16) << recall << std::endl;
     } else
