@@ -86,7 +86,6 @@ namespace diskann {
 
     Timer query_timer, cpu_timer, io_timer;
 
-    _u32 res_count = 0;
     std::vector<MemNavNeighbor> mem_cands;
 
     std::vector<unsigned> mem_tags(mem_L);
@@ -161,7 +160,6 @@ namespace diskann {
 
     // sector scratch
     char *sector_scratch = query_scratch->sector_scratch;
-    _u64 &sector_scratch_idx = query_scratch->sector_idx;
 
     // query <-> PQ chunk centers distances
     float *pq_dists = query_scratch->aligned_pqtable_dist_scratch;
@@ -403,7 +401,6 @@ namespace diskann {
     cur_list_size = 0;
 
     float        query_norm = 0;
-    const T *    query = data.scratch.aligned_query_T;
     const float *query_float = data.scratch.aligned_query_float;
 
     for (uint32_t i = 0; i < this->data_dim; i++) {
@@ -423,10 +420,8 @@ namespace diskann {
     }
     persist_data.query_norm = query_norm;
 
-    IOContext &ctx = data.ctx;
     auto       query_scratch = &(data.scratch);
     query_scratch->reset();
-    T *   data_buf = query_scratch->coord_scratch;
     float *pq_dists = query_scratch->aligned_pqtable_dist_scratch;
     pq_table.populate_chunk_distances(query_float, pq_dists);
     tsl::robin_set<_u64> &visited = *(query_scratch->visited);
@@ -457,7 +452,7 @@ namespace diskann {
       for (auto &x : distances)
         x = std::numeric_limits<float>::max();
       
-      this->page_search_interim(query1, l_search, mem_L, l_search, indices.data(),
+      this->page_search_interim(l_search, mem_L, l_search, indices.data(),
                                distances.data(), cur_bw,
                                std::numeric_limits<_u32>::max(),
                                false, page_search_use_ratio, stats, &persist_data);
