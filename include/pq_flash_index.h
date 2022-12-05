@@ -100,7 +100,7 @@ namespace diskann {
         const std::string &mem_index_path, const _u32 num_threads,
         const _u32 mem_L);
 
-    DISKANN_DLLEXPORT void load_cache_list(std::vector<uint32_t> &node_list);
+    DISKANN_DLLEXPORT void load_cache_list(std::vector<uint32_t> &node_list, bool use_stl = false);
 
 #ifdef EXEC_ENV_OLS
     DISKANN_DLLEXPORT void generate_cache_list_from_sample_queries(
@@ -248,10 +248,12 @@ namespace diskann {
     // nhood_cache
     unsigned *                                    nhood_cache_buf = nullptr;
     tsl::robin_map<_u32, std::pair<_u32, _u32 *>> nhood_cache;
+    std::unordered_map<_u32, std::pair<_u32, _u32 *>> nhood_cache_stl;
 
     // coord_cache
     T *                       coord_cache_buf = nullptr;
     tsl::robin_map<_u32, T *> coord_cache;
+    std::unordered_map<_u32, T*> coord_cache_stl;
 
     // thread-specific scratch
     ConcurrentQueue<ThreadData<T>> thread_data;

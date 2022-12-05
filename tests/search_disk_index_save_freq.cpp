@@ -139,7 +139,7 @@ int search_disk_index(
   if (num_nodes_to_cache > 0)
     _pFlashIndex->generate_cache_list_from_sample_queries(
         warmup_query_file, 15, 6, num_nodes_to_cache, num_threads, node_list, false, 0);
-  _pFlashIndex->load_cache_list(node_list);
+  _pFlashIndex->load_cache_list(node_list, use_page_search);
   node_list.clear();
   node_list.shrink_to_fit();
 

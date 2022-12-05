@@ -128,10 +128,19 @@ int search_disk_index(diskann::Metric&   metric,
   std::vector<uint32_t> node_list;
   diskann::cout << "Caching " << num_nodes_to_cache
                 << " BFS nodes around medoid(s)" << std::endl;
-  _pFlashIndex->cache_bfs_levels(num_nodes_to_cache, node_list);
-  //  _pFlashIndex->generate_cache_list_from_sample_queries(
-  //      warmup_query_file, 15, 6, num_nodes_to_cache, num_threads, node_list);
-  _pFlashIndex->load_cache_list(node_list);
+  if (iter_knn_to_range_search && !use_page_search)  {
+    // if use iterative-cached-beam-search
+
+    _pFlashIndex->cache_bfs_levels(num_nodes_to_cache, node_list);
+    //  _pFlashIndex->generate_cache_list_from_sample_queries(
+    //      warmup_query_file, 15, 6, num_nodes_to_cache, num_threads, node_list);
+    _pFlashIndex->load_cache_list(node_list);
+  } else {
+    if (num_nodes_to_cache > 0) {
+      std::cerr << "cache nodes is not supported" << std::endl;
+      return -1;
+    }
+  }
   node_list.clear();
   node_list.shrink_to_fit();
 

@@ -225,8 +225,8 @@ namespace diskann {
         const unsigned pid = id2page_[retset[marker].id];
         if (page_visited.find(pid) == page_visited.end() && retset[marker].flag) {
           num_seen++;
-          auto iter = nhood_cache.find(retset[marker].id);
-          if (iter != nhood_cache.end()) {
+          auto iter = nhood_cache_stl.find(retset[marker].id);
+          if (iter != nhood_cache_stl.end()) {
             cached_nhoods.push_back(
                 std::make_pair(retset[marker].id, iter->second));
             if (stats != nullptr) {
@@ -304,7 +304,7 @@ namespace diskann {
       // process cached nhoods
       for (auto &cached_nhood : cached_nhoods) {
         auto id = cached_nhood.first;
-        auto  global_cache_iter = coord_cache.find(cached_nhood.first);
+        auto  global_cache_iter = coord_cache_stl.find(cached_nhood.first);
         T *   node_fp_coords_copy = global_cache_iter->second;
         unsigned nnr = cached_nhood.second.first;
         unsigned* cnhood = cached_nhood.second.second;
@@ -509,8 +509,8 @@ namespace diskann {
         const unsigned pid = id2page_[retset[marker].id];
         if (page_visited.find(pid) == page_visited.end() && retset[marker].flag) {
           num_seen++;
-          auto iter = nhood_cache.find(retset[marker].id);
-          if (iter != nhood_cache.end()) {
+          auto iter = nhood_cache_stl.find(retset[marker].id);
+          if (iter != nhood_cache_stl.end()) {
             cached_nhoods.push_back(
                 std::make_pair(retset[marker].id, iter->second));
             if (stats != nullptr) {
@@ -588,7 +588,7 @@ namespace diskann {
       // process cached nhoods
       for (auto &cached_nhood : cached_nhoods) {
         auto id = cached_nhood.first;
-        auto  global_cache_iter = coord_cache.find(cached_nhood.first);
+        auto  global_cache_iter = coord_cache_stl.find(cached_nhood.first);
         T *   node_fp_coords_copy = global_cache_iter->second;
         unsigned nnr = cached_nhood.second.first;
         unsigned* cnhood = cached_nhood.second.second;

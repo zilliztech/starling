@@ -152,7 +152,7 @@ namespace diskann {
   }
 
   template<typename T>
-  void PQFlashIndex<T>::load_cache_list(std::vector<uint32_t> &node_list) {
+  void PQFlashIndex<T>::load_cache_list(std::vector<uint32_t> &node_list, bool use_stl) {
     diskann::cout << "Loading the cache list into memory.." << std::flush;
     _u64 num_cached_nodes = node_list.size();
 
@@ -220,7 +220,11 @@ namespace diskann {
         T *   node_coords = OFFSET_TO_NODE_COORDS(node_buf);
         T *   cached_coords = coord_cache_buf + node_idx * aligned_dim;
         memcpy(cached_coords, node_coords, disk_bytes_per_point);
-        coord_cache.insert(std::make_pair(nhood.first, cached_coords));
+        if (use_stl) {
+          coord_cache_stl[nhood.first] = cached_coords;
+        } else {
+          coord_cache.insert(std::make_pair(nhood.first, cached_coords));
+        }
 
         unsigned *node_nhood = OFFSET_TO_NODE_NHOOD(node_buf);
 
@@ -230,7 +234,11 @@ namespace diskann {
         cnhood.first = nnbrs;
         cnhood.second = nhood_cache_buf + node_idx * (max_degree + 1);
         memcpy(cnhood.second, nbrs, nnbrs * sizeof(unsigned));
-        nhood_cache.insert(std::make_pair(nhood.first, cnhood));
+        if (use_stl) {
+          nhood_cache_stl[nhood.first] = cnhood;
+        } else {
+          nhood_cache.insert(std::make_pair(nhood.first, cnhood));
+        }
         aligned_free(nhood.second);
         node_idx++;
       }
