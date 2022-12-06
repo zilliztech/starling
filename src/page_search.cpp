@@ -55,7 +55,9 @@ namespace diskann {
     const T *    query = data.scratch.aligned_query_T;
     const float *query_float = data.scratch.aligned_query_float;
 
-    for (uint32_t i = 0; i < this->data_dim; i++) {
+    uint32_t query_dim = metric == diskann::Metric::INNER_PRODUCT ? this-> data_dim - 1: this-> data_dim;
+
+    for (uint32_t i = 0; i < query_dim; i++) {
       data.scratch.aligned_query_float[i] = query1[i];
       data.scratch.aligned_query_T[i] = query1[i];
       query_norm += query1[i] * query1[i];
