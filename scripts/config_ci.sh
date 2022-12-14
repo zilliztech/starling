@@ -76,6 +76,12 @@ CACHE=0
 MEM_L=0 # non-zero to enable
 MEM_TOPK=3
 
+#############
+#    SQ     #  
+#############
+USE_SQ=0
+
+
 # Page Search
 USE_PAGE_SEARCH=0 # Set 0 for beam search, 1 for page search (default)
 PS_USE_RATIO=1.0

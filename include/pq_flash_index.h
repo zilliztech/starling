@@ -80,7 +80,7 @@ namespace diskann {
     DISKANN_DLLEXPORT PQFlashIndex(
         std::shared_ptr<AlignedFileReader> &fileReader,
         const bool use_page_search,
-        diskann::Metric                     metric = diskann::Metric::L2);
+        diskann::Metric                     metric = diskann::Metric::L2, bool use_sq = false);
     DISKANN_DLLEXPORT ~PQFlashIndex();
 
     // load id to page id and graph partition layout
@@ -136,6 +136,10 @@ namespace diskann {
         const bool use_reorder_data = false, QueryStats *stats = nullptr, const _u32 mem_L = 0);
 
     DISKANN_DLLEXPORT void page_search(
+        const T *query, const _u64 k_search, const _u32 mem_L, const _u64 l_search, _u64 *res_ids,
+        float *res_dists, const _u64 beam_width, const _u32 io_limit,
+        const bool use_reorder_data = false, const float use_ratio = 1.0f, QueryStats *stats = nullptr);
+    DISKANN_DLLEXPORT void page_search_sq(
         const T *query, const _u64 k_search, const _u32 mem_L, const _u64 l_search, _u64 *res_ids,
         float *res_dists, const _u64 beam_width, const _u32 io_limit,
         const bool use_reorder_data = false, const float use_ratio = 1.0f, QueryStats *stats = nullptr);
@@ -270,6 +274,10 @@ namespace diskann {
     bool use_page_search_ = true;
     std::vector<unsigned> id2page_;
     std::vector<std::vector<unsigned>> gp_layout_;
+
+    bool use_sq_ = false;
+    float* mins = nullptr;
+    float* frac = nullptr;
     // tsl::robin_map<_u32, char*> page_cache_;
     // tsl::robin_map<_u32, char*> node_cache_;
 

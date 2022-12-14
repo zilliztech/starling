@@ -64,7 +64,8 @@ int search_disk_index(
     const _u32 mem_L,
     const bool use_page_search=true,
     const float use_ratio=1.0,
-    const bool use_reorder_data = false) {
+    const bool use_reorder_data = false,
+    const bool use_sq = false) {
   diskann::cout << "Search parameters: #threads: " << num_threads << ", ";
   if (beamwidth <= 0)
     diskann::cout << "beamwidth to be optimized for each L value" << std::flush;
@@ -108,8 +109,12 @@ int search_disk_index(
   reader.reset(new LinuxAlignedFileReader());
 #endif
 
+  if(use_sq && !std::is_same<T, float>::value){
+    std::cout << "erro, only support float sq" << std::endl;
+    exit(-1);
+  }
   std::unique_ptr<diskann::PQFlashIndex<T>> _pFlashIndex(
-      new diskann::PQFlashIndex<T>(reader, use_page_search, metric));
+      new diskann::PQFlashIndex<T>(reader, use_page_search, metric, use_sq));
 
   int res = _pFlashIndex->load(num_threads, index_path_prefix.c_str(), disk_file_path);
 
@@ -129,10 +134,16 @@ int search_disk_index(
   diskann::cout << "Caching " << num_nodes_to_cache
                 << " BFS nodes around medoid(s)" << std::endl;
   //_pFlashIndex->cache_bfs_levels(num_nodes_to_cache, node_list);
-  if (num_nodes_to_cache > 0)
+  if (num_nodes_to_cache > 0){
+    if(use_sq){
+      std::cout << "not support sq cache, please use mem index" << std::endl;
+      exit(-1);
+    }
     _pFlashIndex->generate_cache_list_from_sample_queries(
         warmup_query_file, 15, 6, num_nodes_to_cache, num_threads, node_list, use_page_search, mem_L);
-  _pFlashIndex->load_cache_list(node_list);
+    _pFlashIndex->load_cache_list(node_list);
+  }
+  
   node_list.clear();
   node_list.shrink_to_fit();
 
@@ -232,15 +243,30 @@ int search_disk_index(
     // Using branching outside the for loop instead of inside and 
     // std::function/std::mem_fn for less switching and function calling overhead
     if (use_page_search) {
-#pragma omp parallel for schedule(dynamic, 1)
-      for (_s64 i = 0; i < (int64_t) query_num; i++) {
-        _pFlashIndex->page_search(
-            query + (i * query_aligned_dim), recall_at, mem_L, L,
-            query_result_ids_64.data() + (i * recall_at),
-            query_result_dists[test_id].data() + (i * recall_at),
-            optimized_beamwidth, search_io_limit, use_reorder_data, use_ratio, stats + i);
+      if(use_sq){
+  #pragma omp parallel for schedule(dynamic, 1)
+        for (_s64 i = 0; i < (int64_t) query_num; i++) {
+          _pFlashIndex->page_search_sq(
+              query + (i * query_aligned_dim), recall_at, mem_L, L,
+              query_result_ids_64.data() + (i * recall_at),
+              query_result_dists[test_id].data() + (i * recall_at),
+              optimized_beamwidth, search_io_limit, use_reorder_data, use_ratio, stats + i);
+        }
+      }else{
+  #pragma omp parallel for schedule(dynamic, 1)
+        for (_s64 i = 0; i < (int64_t) query_num; i++) {
+          _pFlashIndex->page_search(
+              query + (i * query_aligned_dim), recall_at, mem_L, L,
+              query_result_ids_64.data() + (i * recall_at),
+              query_result_dists[test_id].data() + (i * recall_at),
+              optimized_beamwidth, search_io_limit, use_reorder_data, use_ratio, stats + i);
+        }
       }
     } else {
+      if(use_sq){
+        std::cout << "diskann current not support sq..." << std::endl;
+        exit(-1);
+      }
 #pragma omp parallel for schedule(dynamic, 1)
       for (_s64 i = 0; i < (int64_t) query_num; i++) {
         _pFlashIndex->cached_beam_search(
@@ -328,6 +354,7 @@ int main(int argc, char** argv) {
   bool                  use_reorder_data = false;
   bool                  use_page_search = true;
   float                 use_ratio = 1.0;
+  bool use_sq = false;
 
   po::options_description desc{"Arguments"};
   try {
@@ -374,6 +401,9 @@ int main(int argc, char** argv) {
                        po::bool_switch()->default_value(false),
                        "Include full precision data in the index. Use only in "
                        "conjuction with compressed data on SSD.");
+    desc.add_options()("use_sq",
+                       po::value<bool>(&use_sq)->default_value(0),
+                       "Use SQ-compressed disk vector.");
     desc.add_options()("mem_L", po::value<unsigned>(&mem_L)->default_value(0),
                        "The L of the in-memory navigation graph while searching. Use 0 to disable");
     desc.add_options()("use_page_search", po::value<bool>(&use_page_search)->default_value(1),
@@ -422,11 +452,21 @@ int main(int argc, char** argv) {
               << std::endl;
     return -1;
   }
+  if ((data_type != std::string("float")) &&
+      (use_sq)) {
+    std::cout << "Currently support only float sq"
+              << std::endl;
+    return -1;
+  }
 
   if (use_reorder_data && data_type != std::string("float")) {
     std::cout << "Error: Reorder data for reordering currently only "
                  "supported for float data type."
               << std::endl;
+    return -1;
+  }
+  if(!use_page_search && use_sq){
+    std::cout << "Currently not support diskann + sq" << std::endl;
     return -1;
   }
 
@@ -437,7 +477,7 @@ int main(int argc, char** argv) {
                                       result_path_prefix, query_file, gt_file,
                                       disk_file_path,
                                       num_threads, K, W, num_nodes_to_cache,
-                                      search_io_limit, Lvec, mem_L, use_page_search, use_ratio, use_reorder_data);
+                                      search_io_limit, Lvec, mem_L, use_page_search, use_ratio, use_reorder_data, use_sq);
     else if (data_type == std::string("int8"))
       return search_disk_index<int8_t>(metric, index_path_prefix,
                                        mem_index_path,

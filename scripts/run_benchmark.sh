@@ -62,6 +62,11 @@ case $2 in
       -B $B \
       -M $M \
       -T $BUILD_T > ${INDEX_PREFIX_PATH}build.log
+    cp ${INDEX_PREFIX_PATH}_disk.index ${INDEX_PREFIX_PATH}_disk_beam_search.index
+  ;;
+  sq)
+    cp  ${INDEX_PREFIX_PATH}_disk_beam_search.index ${INDEX_PREFIX_PATH}_disk.index 
+    time ${EXE_PATH}/tests/utils/sq ${INDEX_PREFIX_PATH} > ${INDEX_PREFIX_PATH}sq.log
   ;;
   build_mem)
     if [ ${MEM_USE_FREQ} -eq 1 ]; then
@@ -123,14 +128,20 @@ case $2 in
     if [ ! -f "$OLD_INDEX_FILE" ]; then
       OLD_INDEX_FILE=${INDEX_PREFIX_PATH}_disk.index
     fi
+    #using sq index file to gp
+    GP_DATA_TYPE=$DATA_TYPE
+    if [ $USE_SQ -eq 1 ]; then 
+      OLD_INDEX_FILE=${INDEX_PREFIX_PATH}_disk.index
+      GP_DATA_TYPE=uint8
+    fi
     GP_FILE_PATH=${GP_PATH}_part.bin
     echo "Running graph partition... ${GP_FILE_PATH}.log"
     if [ ${GP_USE_FREQ} -eq 1 ]; then
       time ${EXE_PATH}/graph_partition/partitioner --index_file ${OLD_INDEX_FILE} \
-        --data_type $DATA_TYPE --gp_file $GP_FILE_PATH -T $GP_T --ldg_times $GP_TIMES --freq_file ${FREQ_PATH}_freq.bin --lock_nums ${GP_LOCK_NUMS} --cut ${GP_CUT} > ${GP_FILE_PATH}.log
+        --data_type $GP_DATA_TYPE --gp_file $GP_FILE_PATH -T $GP_T --ldg_times $GP_TIMES --freq_file ${FREQ_PATH}_freq.bin --lock_nums ${GP_LOCK_NUMS} --cut ${GP_CUT} > ${GP_FILE_PATH}.log
     else
       time ${EXE_PATH}/graph_partition/partitioner --index_file ${OLD_INDEX_FILE} \
-        --data_type $DATA_TYPE --gp_file $GP_FILE_PATH -T $GP_T --ldg_times $GP_TIMES > ${GP_FILE_PATH}.log
+        --data_type $GP_DATA_TYPE --gp_file $GP_FILE_PATH -T $GP_T --ldg_times $GP_TIMES > ${GP_FILE_PATH}.log
     fi
 
     echo "Running relayout... ${GP_PATH}relayout.log"
@@ -175,7 +186,7 @@ case $2 in
         do
           for T in ${T_LIST[@]}
           do
-            SEARCH_LOG=${INDEX_PREFIX_PATH}search/search_K${K}_CACHE${CACHE}_BW${BW}_T${T}_MEML${MEM_L}_MEMK${MEM_TOPK}_MEM_USE_FREQ${MEM_USE_FREQ}_PS${USE_PAGE_SEARCH}_USE_RATIO${PS_USE_RATIO}_GP_USE_FREQ{$GP_USE_FREQ}_GP_LOCK_NUMS${GP_LOCK_NUMS}_GP_CUT${GP_CUT}.log
+            SEARCH_LOG=${INDEX_PREFIX_PATH}search/search_SQ${USE_SQ}_K${K}_CACHE${CACHE}_BW${BW}_T${T}_MEML${MEM_L}_MEMK${MEM_TOPK}_MEM_USE_FREQ${MEM_USE_FREQ}_PS${USE_PAGE_SEARCH}_USE_RATIO${PS_USE_RATIO}_GP_USE_FREQ{$GP_USE_FREQ}_GP_LOCK_NUMS${GP_LOCK_NUMS}_GP_CUT${GP_CUT}.log
             echo "Searching... log file: ${SEARCH_LOG}"
             sync; echo 3 | sudo tee /proc/sys/vm/drop_caches; ${EXE_PATH}/tests/search_disk_index --data_type $DATA_TYPE \
               --dist_fn $DIST_FN \
@@ -192,7 +203,8 @@ case $2 in
               --mem_index_path ${MEM_INDEX_PATH}_index \
               --use_page_search ${USE_PAGE_SEARCH} \
               --use_ratio ${PS_USE_RATIO} \
-              --disk_file_path ${DISK_FILE_PATH}> ${SEARCH_LOG}
+              --disk_file_path ${DISK_FILE_PATH} \
+              --use_sq ${USE_SQ}       > ${SEARCH_LOG} 
             log_arr+=( ${SEARCH_LOG} )
           done
         done

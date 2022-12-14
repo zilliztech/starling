@@ -10,7 +10,9 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <iterator>
+#include <limits>
 #include <thread>
 #include "distance.h"
 #include "exceptions.h"
@@ -36,7 +38,7 @@ namespace diskann {
   template<typename T>
   PQFlashIndex<T>::PQFlashIndex(std::shared_ptr<AlignedFileReader> &fileReader,
                                 const bool use_page_search,
-                                diskann::Metric                     m)
+                                diskann::Metric                     m, bool use_sq)
       : reader(fileReader), metric(m) {
     if (m == diskann::Metric::COSINE || m == diskann::Metric::INNER_PRODUCT) {
       if (std::is_floating_point<T>::value) {
@@ -55,6 +57,7 @@ namespace diskann {
     this->dist_cmp.reset(diskann::get_distance_function<T>(m));
     this->dist_cmp_float.reset(diskann::get_distance_function<float>(m));
     this->use_page_search_ = use_page_search;
+    this->use_sq_ = use_sq;
   }
 
   template<typename T>
@@ -76,6 +79,10 @@ namespace diskann {
     if (load_flag) {
       this->destroy_thread_data();
       reader->close();
+    }
+    if(use_sq_){
+      free(this->frac);
+      free(this->mins);
     }
   }
 
@@ -281,16 +288,30 @@ namespace diskann {
     std::vector<float>    tmp_result_dists(sample_num, 0);
 
     if(use_pagesearch){
-      
+      if(use_sq_){
 #pragma omp parallel for schedule(dynamic, 1) num_threads(nthreads)
-      for (_s64 i = 0; i < (int64_t) sample_num; i++) {
-        page_search(
-              samples + (i * sample_aligned_dim), 1, mem_L, l_search,
-              tmp_result_ids_64.data() + (i * 1),
-              tmp_result_dists.data() + (i * 1),
-              beamwidth, std::numeric_limits<_u32>::max(), false, 1, nullptr);
-      }
+        for (_s64 i = 0; i < (int64_t) sample_num; i++) {
+          page_search_sq(
+                samples + (i * sample_aligned_dim), 1, mem_L, l_search,
+                tmp_result_ids_64.data() + (i * 1),
+                tmp_result_dists.data() + (i * 1),
+                beamwidth, std::numeric_limits<_u32>::max(), false, 1, nullptr);
+        }
+      }else{
+#pragma omp parallel for schedule(dynamic, 1) num_threads(nthreads)
+        for (_s64 i = 0; i < (int64_t) sample_num; i++) {
+          page_search(
+                samples + (i * sample_aligned_dim), 1, mem_L, l_search,
+                tmp_result_ids_64.data() + (i * 1),
+                tmp_result_dists.data() + (i * 1),
+                beamwidth, std::numeric_limits<_u32>::max(), false, 1, nullptr);
+        }
+      } 
     }else{
+      if(use_sq_){
+        std::cout << "current not support diskann sq" << std::endl;
+        exit(-1);
+      }
 #pragma omp parallel for schedule(dynamic, 1) num_threads(nthreads)
       for (_s64 i = 0; i < (int64_t) sample_num; i++) {
         cached_beam_search(samples + (i * sample_aligned_dim), 1, l_search,
@@ -560,6 +581,10 @@ namespace diskann {
     // will change later if we use PQ on disk or if we are using
     // inner product without PQ
     this->disk_bytes_per_point = this->data_dim * sizeof(T);
+    if(use_sq_){
+      this->disk_bytes_per_point = this->data_dim * sizeof(uint8_t);
+      std::cout << "disk bytes per point "<<this->disk_bytes_per_point << std::endl;
+    }
     this->aligned_dim = ROUND_UP(pq_file_dim, 8);
 
     size_t npts_u64, nchunks_u64;
@@ -632,7 +657,6 @@ namespace diskann {
 #else
     std::ifstream index_metadata(disk_index_file, std::ios::binary);
 #endif
-
     _u32 nr, nc;  // metadata itself is stored as bin format (nr is number of
                   // metadata, nc should be 1)
     READ_U32(index_metadata, nr);
@@ -656,6 +680,7 @@ namespace diskann {
     READ_U64(index_metadata, nnodes_per_sector);
     max_degree = ((max_node_len - disk_bytes_per_point) / sizeof(unsigned)) - 1;
 
+    std::cout << "max node len "<<max_node_len <<" disk bytes "<<disk_bytes_per_point << std::endl;
     if (max_degree > MAX_GRAPH_DEGREE) {
       std::stringstream stream;
       stream << "Error loading index. Ensure that max graph degree (R) does "
@@ -702,6 +727,26 @@ namespace diskann {
 
   if (use_page_search_) {
     this->load_partition_data(index_prefix, nnodes_per_sector, num_points);
+  }
+  if(use_sq_){
+    float* maxs = (float*)aligned_alloc(32, aligned_dim * sizeof(float));
+    this->mins =(float*)aligned_alloc(32, aligned_dim * sizeof(float));
+    this->frac = maxs;
+    uint32_t max_min_dims= 0, tmp = 0;
+    std::string max_min_file = std::string(index_prefix)+"_sq_max_min.bin";
+    auto max_min_reader = std::ifstream(max_min_file);
+    max_min_reader.read((char*)&max_min_dims, 4);
+    max_min_reader.read((char*)&tmp, 4);
+    std::cout << "max min file "<<max_min_file<< " dims "<<max_min_dims << std::endl;
+    max_min_reader.read((char*)maxs, max_min_dims/2 * sizeof(float));
+    max_min_reader.read((char*)mins, max_min_dims/2 * sizeof(float));
+    for(uint32_t i=0; i < max_min_dims/2; i++){
+      this->frac[i] = (maxs[i] - this->mins[i]) / std::numeric_limits<uint8_t>::max();
+    }
+    for(uint32_t i=max_min_dims/2; i<aligned_dim; i++){
+      this->frac[i] = 0;
+      this->mins[i] = 0; 
+    }
   }
 
 #ifndef EXEC_ENV_OLS
