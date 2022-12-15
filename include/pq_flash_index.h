@@ -140,6 +140,12 @@ namespace diskann {
         float *res_dists, const _u64 beam_width, const _u32 io_limit,
         const bool use_reorder_data = false, const float use_ratio = 1.0f, QueryStats *stats = nullptr);
 
+    DISKANN_DLLEXPORT void page_search_reuse(
+      const T *query1, const _u64 init_k, const _u32 mem_L, const float l_search_amp, std::vector<_u64> &indices,
+      std::vector<float>& distances, std::vector<float>& last_dists, const _u32 kicked_size,
+      const _u64 beam_width, const _u32 io_limit,
+      const bool use_reorder_data, const float use_ratio, QueryStats *stats);
+
     DISKANN_DLLEXPORT _u32 range_search_iter_knn(const T *query1, const double range,
                                         const _u32          mem_L,
                                         const _u64          min_l_search,

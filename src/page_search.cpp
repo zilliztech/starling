@@ -667,6 +667,105 @@ namespace diskann {
 
     persist_data->cur_list_size = cur_list_size;
   }
+
+  template<typename T>
+  void PQFlashIndex<T>::page_search_reuse(
+      const T *query1, const _u64 init_k, const _u32 mem_L, const float l_search_amp, std::vector<_u64> &indices,
+      std::vector<float>& distances, std::vector<float>& last_dists, const _u32 kicked_size,
+      const _u64 beam_width, const _u32 io_limit,
+      const bool use_reorder_data, const float use_ratio, QueryStats *stats) {
+    _u32 topk = init_k;
+    _u32 l_search = topk * l_search_amp;
+
+    PageSearchPersistData<T> persist_data;
+    ThreadData<T>& data = persist_data.thread_data;
+    data = this->thread_data.pop();
+    while (data.scratch.sector_scratch == nullptr) {
+      this->thread_data.wait_for_push_notify();
+      persist_data.thread_data = this->thread_data.pop();
+    }
+    persist_data.full_ret_set.reserve(4096);
+    std::vector<Neighbor> &retset = persist_data.ret_set;
+    NeighborVec &kicked = persist_data.kicked;
+    kicked.set_cap(kicked_size);
+    unsigned &cur_list_size = persist_data.cur_list_size;
+    cur_list_size = 0;
+
+    float        query_norm = 0;
+    const float *query_float = data.scratch.aligned_query_float;
+
+    for (uint32_t i = 0; i < this->data_dim; i++) {
+      data.scratch.aligned_query_float[i] = query1[i];
+      data.scratch.aligned_query_T[i] = query1[i];
+      query_norm += query1[i] * query1[i];
+    }
+
+    if (metric == diskann::Metric::INNER_PRODUCT) {
+      query_norm = std::sqrt(query_norm);
+      data.scratch.aligned_query_T[this->data_dim - 1] = 0;
+      data.scratch.aligned_query_float[this->data_dim - 1] = 0;
+      for (uint32_t i = 0; i < this->data_dim - 1; i++) {
+        data.scratch.aligned_query_T[i] /= query_norm;
+        data.scratch.aligned_query_float[i] /= query_norm;
+      }
+    }
+    persist_data.query_norm = query_norm;
+
+    auto       query_scratch = &(data.scratch);
+    query_scratch->reset();
+    float *pq_dists = query_scratch->aligned_pqtable_dist_scratch;
+    pq_table.populate_chunk_distances(query_float, pq_dists);
+    tsl::robin_set<_u64> &visited = *(query_scratch->visited);
+
+    Timer query_timer;
+
+    retset.resize(l_search+1);
+    std::vector<uint32_t> mem_tags(mem_L);
+    std::vector<float> mem_dis(mem_L);
+    std::vector<T*> mem_res = std::vector<T*>();
+    mem_index_->search_with_tags(query1, mem_L, mem_L, mem_tags.data(), mem_dis.data(), nullptr, mem_res);
+
+    for (size_t i = 0; i < std::min(mem_L, l_search); ++i) {
+      retset[cur_list_size].id = mem_tags[i];
+      retset[cur_list_size].distance = mem_dis[i];
+      retset[cur_list_size++].flag = true;
+      visited.insert(mem_tags[i]);
+    }
+
+    while (true) {
+      indices.resize(topk);
+      distances.resize(topk);
+
+      _u64 cur_bw = beam_width;
+
+      for (auto &x : distances)
+        x = std::numeric_limits<float>::max();
+      
+      this->page_search_interim(topk, mem_L, l_search, indices.data(),
+                               distances.data(), cur_bw,
+                               std::numeric_limits<_u32>::max(),
+                               false, use_ratio, stats, &persist_data);
+
+      size_t last_dists_pos = last_dists.size()-topk-1;
+      if (last_dists.empty() || last_dists_pos < 0) break;
+      if (distances[topk-1] > last_dists[last_dists_pos]) break;
+      
+      retset.resize(2*l_search+1);
+      size_t moved_num = kicked.move_to(retset, cur_list_size, l_search);
+      cur_list_size += moved_num;
+
+      topk *= 2;
+      l_search = topk * l_search_amp;
+    }
+
+    if (stats != nullptr) {
+      stats->total_us = (double) query_timer.elapsed();
+    }
+
+    this->thread_data.push(persist_data.thread_data);
+    this->thread_data.push_notify_all();
+  }
+
   template class PQFlashIndex<_u8>;
   template class PQFlashIndex<_s8>;
   template class PQFlashIndex<float>;
