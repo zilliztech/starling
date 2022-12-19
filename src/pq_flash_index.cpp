@@ -195,7 +195,7 @@ namespace diskann {
         alloc_aligned((void **) &buf, SECTOR_LEN, SECTOR_LEN);
         fnhood.second = buf;
         nhoods.push_back(fnhood);
-        if(!id2page_.empty()){
+        if(use_page_search_){
             read_reqs.emplace_back(
               (static_cast<_u64>(id2page_[id]+1)) * SECTOR_LEN, SECTOR_LEN,
               fnhood.second);
@@ -212,7 +212,7 @@ namespace diskann {
 
       for (auto &nhood : nhoods) {
         char* node_buf = nullptr;
-        if(!id2page_.empty()){
+        if(use_page_search_){
           char *sector_buf = nhood.second;
           unsigned pid = id2page_[nhood.first];
           for (unsigned j = 0; j < gp_layout_[pid].size(); ++j) {
@@ -412,7 +412,11 @@ namespace diskann {
           AlignedRead read;
           read.len = SECTOR_LEN;
           read.buf = buf;
-          read.offset = NODE_SECTOR_NO(nodes_to_expand[cur_pt]) * SECTOR_LEN;
+          if(this->use_page_search_){
+            read.offset= SECTOR_LEN * (id2page_[nodes_to_expand[cur_pt]] + 1);
+          }else{
+            read.offset = NODE_SECTOR_NO(nodes_to_expand[cur_pt]) * SECTOR_LEN;
+          }
           read_reqs.push_back(read);
         }
 
@@ -429,9 +433,21 @@ namespace diskann {
           }
 #endif
           auto &nhood = nhoods[i];
+          char* node_buf = nullptr;
 
           // insert node coord into coord_cache
-          char *    node_buf = OFFSET_TO_NODE(nhood.second, nhood.first);
+          if(use_page_search_){
+            char *sector_buf = nhood.second;
+            unsigned pid = id2page_[nhood.first];
+            for (unsigned j = 0; j < gp_layout_[pid].size(); ++j) {
+              unsigned id = gp_layout_[pid][j];
+              if (id == nhood.first) {
+                node_buf = sector_buf + j * max_node_len;
+              }
+            }
+          }else{
+            node_buf = OFFSET_TO_NODE(nhood.second, nhood.first);
+          }
           unsigned *node_nhood = OFFSET_TO_NODE_NHOOD(node_buf);
           _u64      nnbrs = (_u64) *node_nhood;
           unsigned *nbrs = node_nhood + 1;

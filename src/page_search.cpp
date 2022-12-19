@@ -311,7 +311,7 @@ namespace diskann {
         T *   node_fp_coords_copy = global_cache_iter->second;
         unsigned nnr = cached_nhood.second.first;
         unsigned* cnhood = cached_nhood.second.second;
-        char* node_buf = new char[max_node_len];
+        char node_buf[max_node_len];
         memcpy(node_buf, node_fp_coords_copy, disk_bytes_per_point);
         memcpy((node_buf + disk_bytes_per_point), &nnr, sizeof(unsigned));
         memcpy((node_buf + disk_bytes_per_point + sizeof(unsigned)), cnhood, sizeof(unsigned)*nnr);
@@ -595,7 +595,7 @@ namespace diskann {
         T *   node_fp_coords_copy = global_cache_iter->second;
         unsigned nnr = cached_nhood.second.first;
         unsigned* cnhood = cached_nhood.second.second;
-        char* node_buf = new char[max_node_len];
+        char node_buf[max_node_len];
         memcpy(node_buf, node_fp_coords_copy, disk_bytes_per_point);
         memcpy((node_buf + disk_bytes_per_point), &nnr, sizeof(unsigned));
         memcpy((node_buf + disk_bytes_per_point + sizeof(unsigned)), cnhood, sizeof(unsigned)*nnr);
@@ -959,7 +959,7 @@ namespace diskann {
         T *   node_fp_coords_copy = global_cache_iter->second;
         unsigned nnr = cached_nhood.second.first;
         unsigned* cnhood = cached_nhood.second.second;
-        char* node_buf = new char[max_node_len];
+        char node_buf[max_node_len];
         memcpy(node_buf, node_fp_coords_copy, disk_bytes_per_point);
         memcpy((node_buf + disk_bytes_per_point), &nnr, sizeof(unsigned));
         memcpy((node_buf + disk_bytes_per_point + sizeof(unsigned)), cnhood, sizeof(unsigned)*nnr);

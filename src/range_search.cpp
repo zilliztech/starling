@@ -430,7 +430,7 @@ namespace diskann {
 
     retset.resize(l_search+1);
     std::vector<T*> mem_res = std::vector<T*>();
-    if (upper_mem_tags.size() < mem_L) {
+    if (mem_L && upper_mem_tags.size() < mem_L) {
       upper_mem_tags.resize(mem_L);
       upper_mem_dis.resize(mem_L);
       mem_index_->search_with_tags(query1, mem_L, mem_L, upper_mem_tags.data(), upper_mem_dis.data(), nullptr, mem_res);
@@ -441,6 +441,42 @@ namespace diskann {
       retset[cur_list_size].distance = upper_mem_dis[i];
       retset[cur_list_size++].flag = true;
       visited.insert(upper_mem_tags[i]);
+    }
+    
+    _u8 *  pq_coord_scratch = query_scratch->aligned_pq_coord_scratch;
+    auto compute_pq_dists = [this, pq_coord_scratch, pq_dists](const unsigned *ids,
+                                                            const _u64 n_ids,
+                                                            float *dists_out) {
+      pq_flash_index_utils::aggregate_coords(ids, n_ids, this->data, this->n_chunks,
+                         pq_coord_scratch);
+      pq_flash_index_utils::pq_dist_lookup(pq_coord_scratch, n_ids, this->n_chunks, pq_dists,
+                       dists_out);
+    };
+    float *dist_scratch = query_scratch->aligned_dist_scratch;
+    auto compute_and_add_to_retset = [&](const unsigned *node_ids, const _u64 n_ids) {
+      compute_pq_dists(node_ids, n_ids, dist_scratch);
+      for (_u64 i = 0; i < n_ids; ++i) {
+        retset[cur_list_size].id = node_ids[i];
+        retset[cur_list_size].distance = dist_scratch[i];
+        retset[cur_list_size++].flag = true;
+        visited.insert(node_ids[i]);
+      }
+    };
+    _u32                        best_medoid = 0;
+    float                       best_dist = (std::numeric_limits<float>::max)();
+    std::vector<SimpleNeighbor> medoid_dists;
+    for (_u64 cur_m = 0; cur_m < num_medoids; cur_m++) {
+      float cur_expanded_dist = dist_cmp_float->compare(
+          query_float, centroid_data + aligned_dim * cur_m,
+          (unsigned) aligned_dim);
+      if (cur_expanded_dist < best_dist) {
+        best_medoid = medoids[cur_m];
+        best_dist = cur_expanded_dist;
+      }
+    }
+    // if mem_L push the medoid node into retset
+    if (mem_L == 0){
+      compute_and_add_to_retset(&best_medoid, 1);
     }
 
     while (!stop_flag) {
