@@ -226,10 +226,10 @@ int search_disk_index(diskann::Metric&   metric,
     // to switch between knn methods
     if (iter_knn_to_range_search) {
       if (kicked_size) {
-        if (mem_L <= 0) {
-          diskann::cerr << "MEM_L should be greater than 0" << std::endl;
-          return -1;
-        }
+        // if (mem_L <= 0) {
+        //   diskann::cerr << "MEM_L should be greater than 0" << std::endl;
+        //   return -1;
+        // }
 
         std::cout << "Iterative KNN page search using intermediate states" << std::endl;
 #pragma omp parallel for schedule(dynamic, 1)
@@ -311,7 +311,7 @@ int search_disk_index(diskann::Metric&   metric,
         total_positive += groundtruth_ids[i].size();
       }
 
-      ratio_of_sums = (1.0 * total_true_positive) / (1.0 * total_positive);
+      ratio_of_sums = (1.0 * total_true_positive) / (1.0 * total_positive) * 100;
     }
 
     diskann::cout << std::setw(6) << L << std::setw(10) << mem_L
