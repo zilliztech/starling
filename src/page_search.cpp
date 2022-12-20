@@ -632,6 +632,36 @@ namespace diskann {
         ++k;
     }
 
+    if (last_io_ids.size()) {
+      for (size_t i = 0; i < last_io_ids.size(); ++i) {
+        const unsigned last_io_id = last_io_ids[i];
+        char    *sector_buf = last_pages.data() + i * SECTOR_LEN;
+        const unsigned pid = id2page_[last_io_id];
+        const unsigned p_size = gp_layout_[pid].size();
+        // minus one for the vector that is computed previously
+        unsigned vis_size = use_ratio * (p_size - 1);
+        std::vector<std::pair<float, const char*>> vis_cand;
+        vis_cand.reserve(p_size);
+
+        // compute exact distances of the vectors within the page
+        for (unsigned j = 0; j < p_size; ++j) {
+          const unsigned id = gp_layout_[pid][j];
+          if (id == last_io_id) continue;
+          const char* node_buf = sector_buf + j * max_node_len;
+          float dist = compute_extact_dists_and_push(node_buf, id);
+          vis_cand.emplace_back(dist, node_buf);
+        }
+        if (vis_size && vis_size != p_size) {
+          std::sort(vis_cand.begin(), vis_cand.end());
+        }
+
+        // compute PQ distances for neighbours of the vectors in the page
+        for (unsigned j = 0; j < vis_size; ++j) {
+          compute_and_push_nbrs(vis_cand[j].second, k);
+        }
+      }
+    }
+
     // re-sort by distance
     std::sort(full_retset.begin(), full_retset.end(),
               [](const Neighbor &left, const Neighbor &right) {
@@ -749,6 +779,10 @@ namespace diskann {
       size_t last_dists_pos = last_dists.size()-topk-1;
       if (last_dists.empty() || last_dists_pos < 0) break;
       if (distances[topk-1] > last_dists[last_dists_pos]) break;
+
+      if (stats != nullptr) {
+        ++(stats->flip_cnt);
+      }
       
       retset.resize(2*l_search+1);
       size_t moved_num = kicked.move_to(retset, cur_list_size, l_search);

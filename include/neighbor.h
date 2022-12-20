@@ -125,6 +125,7 @@ namespace diskann {
     }
 
     size_t move_to(std::vector<Neighbor>& des, size_t des_idx, size_t num) {
+      if (num == 0) return 0;
       if (num > size_) {
         std::cout << "warning: require more neighbors than having. num: " << num << " size_: " << size_ << std::endl;
       }

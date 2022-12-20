@@ -23,6 +23,8 @@ namespace diskann {
     float io_us = 0;     // total time spent in IO
     float cpu_us = 0;    // total time spent in CPU
 
+    size_t flip_cnt = 0;
+
     unsigned n_4k = 0;          // # of 4kB reads
     unsigned n_8k = 0;          // # of 8kB reads
     unsigned n_12k = 0;         // # of 12kB reads

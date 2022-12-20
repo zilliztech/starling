@@ -176,7 +176,7 @@ void LinuxAlignedFileReader::open(const std::string &fname) {
   this->file_desc = ::open(fname.c_str(), flags);
   // error checks
   assert(this->file_desc != -1);
-  std::cerr << "Opened file : " << fname << std::endl;
+  std::cout << "Opened file : " << fname << std::endl;
 }
 
 void LinuxAlignedFileReader::close() {
