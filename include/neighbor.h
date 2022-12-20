@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <mutex>
 #include <vector>
@@ -114,20 +115,16 @@ namespace diskann {
     }
 
     void insert(const Neighbor &nn) {
-      if (size_ == 0 && cap_) {
-        v[size_] = nn;
-      } else {
-        if (size_ == cap_ && nn.distance >= v[size_-1].distance) return;
-        InsertIntoPool(v.data(), size_, nn);
-      }
-
-      if (size_ < cap_) ++size_;
+      v[work_ptr % cap_] = nn;
+      ++work_ptr;
+      ++size_;
+      size_ = std::min(size_, cap_);
     }
 
     size_t move_to(std::vector<Neighbor>& des, size_t des_idx, size_t num) {
-      if (num > size_) {
-        std::cout << "warning: require more neighbors than having. num: " << num << " size_: " << size_ << std::endl;
-      }
+      std::sort(v.begin(), v.begin()+size_, [](Neighbor& left, Neighbor& right){
+        return left.distance < right.distance;
+      }); 
       num = std::min(num, size_);
       if (des_idx + num >= des.size()) {
         std::cerr << "des size error" << std::endl;
@@ -138,11 +135,12 @@ namespace diskann {
         memmove(v.data(), &(v.data()[num]), (size_ - num)*sizeof(Neighbor));
       }
       size_ -= num;
+      work_ptr = size_;
       return num;
     }
   private:
     std::vector<Neighbor> v;
-    size_t cap_ = 0, size_ = 0;
+    size_t cap_ = 0, size_ = 0, work_ptr = 0;
   };
 
   static inline unsigned InsertIntoPool(Neighbor *addr, unsigned K,
