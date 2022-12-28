@@ -34,6 +34,20 @@ dataset_ssnpp10M() {
   DATA_N=10000000
 }
 
+dataset_ssnpp16M() {
+  BASE_PATH=/data/exper_datasets/SSNPP/base.16M.u8bin
+  QUERY_FILE=/data/exper_datasets/SSNPP/FB_ssnpp_public_queries.u8bin
+  GT_FILE=/data/exper_datasets/SSNPP/ssnpp-1000-103929.0.bin
+  # GEN_FREQ_QUERY=/data/datasets/SSNPP/FB_ssnpp_public_queries.u8bin
+  PREFIX=ssnpp_16m
+  DATA_TYPE=uint8
+  DIST_FN=l2
+  B=0.96
+  RADIUS=103929
+  DATA_DIM=256
+  DATA_N=16000000
+}
+
 #################
 #   BIGANN10M   #
 #################
@@ -48,4 +62,19 @@ dataset_bigann10M() {
   K=10
   DATA_DIM=128
   DATA_N=10000000
+}
+
+dataset_bigann33M() {
+  BASE_PATH=/data/exper_datasets/BIGANN/base.33M.u8bin
+  QUERY_FILE=/data/exper_datasets/BIGANN/query.public.10K.128.u8bin
+  GT_FILE=/data/exper_datasets/BIGANN/bigann-1000-2727.0.bin
+  #GEN_FREQ_QUERY=/data/datasets/BIGANN/freq_sample/train_90k.bin
+  PREFIX=bigann_33m
+  DATA_TYPE=uint8
+  DIST_FN=l2
+  B=0.5
+  K=10
+  RADIUS=2727
+  DATA_DIM=128
+  DATA_N=33000000
 }
