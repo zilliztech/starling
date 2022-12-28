@@ -426,23 +426,6 @@ namespace diskann {
     pq_table.populate_chunk_distances(query_float, pq_dists);
     tsl::robin_set<_u64> &visited = *(query_scratch->visited);
 
-    Timer query_timer;
-
-    retset.resize(l_search+1);
-    std::vector<T*> mem_res = std::vector<T*>();
-    if (mem_L && upper_mem_tags.size() < mem_L) {
-      upper_mem_tags.resize(mem_L);
-      upper_mem_dis.resize(mem_L);
-      mem_index_->search_with_tags(query1, mem_L, mem_L, upper_mem_tags.data(), upper_mem_dis.data(), nullptr, mem_res);
-    }
-
-    for (size_t i = 0; i < std::min(mem_L, l_search); ++i) {
-      retset[cur_list_size].id = upper_mem_tags[i];
-      retset[cur_list_size].distance = upper_mem_dis[i];
-      retset[cur_list_size++].flag = true;
-      visited.insert(upper_mem_tags[i]);
-    }
-    
     _u8 *  pq_coord_scratch = query_scratch->aligned_pq_coord_scratch;
     auto compute_pq_dists = [this, pq_coord_scratch, pq_dists](const unsigned *ids,
                                                             const _u64 n_ids,
@@ -462,6 +445,9 @@ namespace diskann {
         visited.insert(node_ids[i]);
       }
     };
+
+    Timer query_timer;
+
     _u32                        best_medoid = 0;
     float                       best_dist = (std::numeric_limits<float>::max)();
     std::vector<SimpleNeighbor> medoid_dists;
@@ -474,16 +460,34 @@ namespace diskann {
         best_dist = cur_expanded_dist;
       }
     }
-    // if mem_L push the medoid node into retset
-    if (mem_L == 0){
-      compute_and_add_to_retset(&best_medoid, 1);
+
+    retset.resize(l_search+1);
+    std::vector<T*> mem_res = std::vector<T*>();
+    if (mem_L && upper_mem_tags.size() < mem_L) {
+      upper_mem_tags.resize(mem_L);
+      upper_mem_dis.resize(mem_L);
+      mem_index_->search_with_tags(query1, mem_L, mem_L, upper_mem_tags.data(), upper_mem_dis.data(), nullptr, mem_res);
     }
+
+    if (mem_L) {
+      compute_and_add_to_retset(upper_mem_tags.data(), std::min(mem_L,l_search));
+      // for (_u64 i = 0; i < std::min(mem_L, l_search); ++i) {
+      //   retset[cur_list_size].id = upper_mem_tags[i];
+      //   retset[cur_list_size].distance = dist_scratch[i];
+      //   retset[cur_list_size++].flag = true;
+      //   visited.insert(upper_mem_tags[i]);
+      // }
+    } else { 
+      compute_and_add_to_retset(&best_medoid, 1);
+    }    
 
     while (!stop_flag) {
       indices.resize(l_search);
       distances.resize(l_search);
 
-      _u64 cur_bw = min_beam_width;
+      _u64 cur_bw =
+          min_beam_width > (l_search / 5) ? min_beam_width : l_search / 5;
+      cur_bw = (cur_bw > 100) ? 100 : cur_bw;
 
       for (auto &x : distances)
         x = std::numeric_limits<float>::max();

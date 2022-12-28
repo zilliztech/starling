@@ -4,8 +4,10 @@ source config_dataset.sh
 # Choose the dataset by uncomment the line below
 # If multiple lines are uncommented, only the last dataset is effective
 dataset_sift10M
-#dataset_ssnpp10M
-#dataset_bigann10M
+# dataset_ssnpp10M
+# dataset_bigann10M
+# dataset_bigann33M
+# dataset_ssnpp16M
 
 ##################
 #   Disk Build   #
