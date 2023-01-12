@@ -3,11 +3,7 @@ source config_dataset.sh
 
 # Choose the dataset by uncomment the line below
 # If multiple lines are uncommented, only the last dataset is effective
-dataset_sift10M
-# dataset_ssnpp10M
 # dataset_bigann10M
-# dataset_bigann33M
-# dataset_ssnpp16M
 
 ##################
 #   Disk Build   #
@@ -67,10 +63,10 @@ USE_PAGE_SEARCH=1 # Set 0 for beam search, 1 for page search (default)
 PS_USE_RATIO=1.0
 
 # KNN
-LS="100 120"
+LS="100"
 
 # Range search
 RS_LS="80"
 RS_ITER_KNN_TO_RANGE_SEARCH=1 # 0 for custom search, 1 for iterating via KNN, combine with USE_PAGE_SEARCH
-KICKED_SIZE=300 # non-zero to reuse intermediate states during page search
+KICKED_SIZE=0 # non-zero to reuse intermediate states during page search
 RS_CUSTOM_ROUND=0 # set when use custom search, 0 for all pages within radius
