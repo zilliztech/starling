@@ -54,5 +54,3 @@ To run benchmarks, go to `scripts` directory, copy `config_sample.sh` to `config
 | `range` | Range search |
 
 Configure datasets and parameters in `config_local.sh`
-
-To run experiments with multiple segments and large-scale, please visist https://github.com/PwzXxm/segment-framework.
